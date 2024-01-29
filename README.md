@@ -1,5 +1,5 @@
 
-# cpp_sparkplug - A C++ Sparkplug library
+# cpp_sparkplug_host - A C++ Sparkplug Primary Host library
 A basic Sparkplug Primary Host application for managing data from Sparkplug Clients. Tracks the data from multiple clients managing their data and state. Data from all activate clients can be either retrieved as complete data, or only the changes from the last call.
 
 ## WIP
