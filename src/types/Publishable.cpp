@@ -142,7 +142,7 @@ void Publishable::appendTo(std::vector<PublishableUpdate> &payloads, bool force)
         return;
     }
 
-    changedState == ChangedState::NOTHING;
+    changedState = ChangedState::NOTHING;
 
     bool hasChanges = force || any([](Metric *metric)
                                    { return metric->isDirty(); });
