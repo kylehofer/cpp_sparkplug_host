@@ -91,16 +91,3 @@ inline bool Node::isDevice()
 {
     return false;
 }
-
-bool Node::isDirty()
-{
-    return false;
-    // return Publishable::isDirty() || any_of(items.begin(), items.end(), [](std::pair<const long unsigned int, Device *> &device)
-    //                                         { return device.second->isDirty(); });
-}
-
-// void Node::ifDirty(void func(tahu::Payload *payload))
-// {
-//     Publishable::ifDirty(func);
-//     DataCollection<Device>::ifDirty(func);
-// }

@@ -47,8 +47,8 @@ struct SparkplugMessage
 public:
     SparkplugMessage(){};
     SparkplugMessage(string topic, tahu::Payload *payload) : topic(topic), payload(payload){};
-    tahu::Payload *payload;
     string topic;
+    tahu::Payload *payload;
 };
 
 /**
@@ -80,6 +80,8 @@ public:
      * @param clientId MQTT Client Id
      */
     SparkplugReceiver(string address, string clientId);
+
+    ~SparkplugReceiver();
 
     /**
      * @brief Activates the receiver to start receiving messages

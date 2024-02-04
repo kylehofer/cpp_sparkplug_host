@@ -37,6 +37,8 @@
 #include "DataCollection.h"
 #include <functional>
 #include <map>
+#include <atomic>
+#include <memory>
 
 using namespace std;
 
@@ -51,11 +53,16 @@ class SparkplugHost : public DataCollection<Group>
 private:
     std::string server;
     std::string clientId;
-    mutex stateLock;
+    mutex payloadLock;
     mutex commandLock;
+    mutex receiverLock;
     std::vector<SparkplugMessage> commands;
     ParseResult process(SparkplugTopic &topic, tahu::Payload *payload);
-    bool running = false;
+    atomic<bool> running = false;
+
+    std::unique_ptr<SparkplugReceiver> receiver;
+    SparkplugReceiver *getReceiver();
+    void buildReceiver();
 
 protected:
 public:
@@ -94,6 +101,13 @@ public:
      * @return int
      */
     void command(SparkplugMessage message);
+
+    /**
+     * @brief Reconfigures the Host to connect to a new address
+     *
+     * @param address
+     */
+    void configure(std::string address);
 };
 
 #endif /* SRC_SPARKPLUGHOST */

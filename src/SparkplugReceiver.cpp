@@ -62,6 +62,16 @@ SparkplugReceiver::SparkplugReceiver(string address, string clientId) : client(a
     LOGGER("Configured to connect to %s.\n", address.c_str());
 }
 
+SparkplugReceiver::~SparkplugReceiver()
+{
+    client.stop_consuming();
+    client.disable_callbacks();
+    if (client.is_connected())
+    {
+        client.disconnect();
+    }
+}
+
 int SparkplugReceiver::activate()
 {
     client.start_consuming();
@@ -79,17 +89,12 @@ int SparkplugReceiver::configure()
                             .automatic_reconnect(seconds(1), seconds(10))
                             .finalize();
 
-    client.set_connection_lost_handler([](const std::string &)
-                                       { LOGGER("Connection Lost.\n"); });
+    client.set_connection_lost_handler([](const std::string &) {});
 
-    client.set_disconnected_handler([](const mqtt::properties &, mqtt::ReasonCode reason)
-                                    { LOGGER("Disconnected.\n"); });
+    client.set_disconnected_handler([](const mqtt::properties &, mqtt::ReasonCode reason) {});
 
     client.set_connected_handler([this](const std::string &)
-                                 { 
-                                    LOGGER("Connected.\n");
-                                    client.subscribe(TOPIC, QOS, options); });
-
+                                 { client.subscribe(TOPIC, QOS, options); });
     return 0;
 }
 
@@ -176,8 +181,6 @@ int SparkplugReceiver::command(tahu::Metric &metric, string topic)
 
 int SparkplugReceiver::command(SparkplugMessage &message)
 {
-    printf("About to send command for %s\n", message.topic.c_str());
-
     // Initialize payload
     message.payload->has_timestamp = true;
     message.payload->timestamp = get_current_timestamp();

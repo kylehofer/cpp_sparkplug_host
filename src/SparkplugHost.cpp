@@ -35,6 +35,7 @@
 #include "types/PublishableUpdate.h"
 #include <thread>
 #include <chrono>
+#include <set>
 
 const string delimiter{"/"};
 const string SPARKPLUG_ID{"spBv1.0"};
@@ -50,55 +51,57 @@ const string SPARKPLUG_ID{"spBv1.0"};
 
 int SparkplugHost::run()
 {
-    SparkplugReceiver receiver(server, clientId);
-
     running = true;
 
-    receiver.configure();
-    receiver.activate();
     while (running)
     {
         SparkplugMessage message;
         SparkplugTopic topic;
-        map<string, int> rebirths;
+        set<string> rebirths;
 
-        while (receiver.consume(message))
         {
-            if (topic.parse(message.topic))
+            lock_guard<mutex> guard(receiverLock);
+
+            SparkplugReceiver *receiver = getReceiver();
+
+            while (receiver->consume(message))
             {
-                ParseResult result;
+                if (topic.parse(message.topic))
                 {
-                    lock_guard<mutex> guard(stateLock);
-                    result = process(topic, message.payload);
+                    ParseResult result;
+                    {
+                        lock_guard<mutex> guard(payloadLock);
+                        result = process(topic, message.payload);
+                    }
+                    if (result == ParseResult::OUT_OF_SYNC)
+                    {
+                        LOGGER("Receieved a message out of sync\n");
+                        string rebirthTopic(SPARKPLUG_ID + "/" + topic.getGroup() + "/NCMD/" + topic.getNode());
+                        rebirths.insert(rebirthTopic);
+                    }
+                    free_payload(message.payload);
+                    free(message.payload);
                 }
-                if (result == ParseResult::OUT_OF_SYNC)
-                {
-                    LOGGER("Receieved a message out of sync\n");
-                    string value(SPARKPLUG_ID + "/" + topic.getGroup() + "/NCMD/" + topic.getNode());
-                    rebirths[value] = 1;
-                }
-                free_payload(message.payload);
-                free(message.payload);
             }
-        }
 
-        for (auto item = rebirths.begin(); item != rebirths.end(); ++item)
-        {
-            receiver.rebirth(item->first);
-        }
-
-        {
-            lock_guard<mutex> guard(commandLock);
-
-            while (commands.size() > 0)
+            for (auto item = rebirths.begin(); item != rebirths.end(); ++item)
             {
-                auto command = commands.back();
-                commands.pop_back();
+                receiver->rebirth(*item);
+            }
 
-                receiver.command(command);
+            {
+                lock_guard<mutex> guard(commandLock);
 
-                free_payload(command.payload);
-                free(command.payload);
+                while (commands.size() > 0)
+                {
+                    auto command = commands.back();
+                    commands.pop_back();
+
+                    receiver->command(command);
+
+                    free_payload(command.payload);
+                    free(command.payload);
+                }
             }
         }
 
@@ -119,13 +122,32 @@ ParseResult SparkplugHost::process(SparkplugTopic &topic, tahu::Payload *payload
     return group->process(topic, payload);
 }
 
+SparkplugReceiver *SparkplugHost::getReceiver()
+{
+    if (!receiver)
+    {
+        buildReceiver();
+    }
+
+    return receiver.get();
+}
+
+void SparkplugHost::buildReceiver()
+{
+    {
+        lock_guard<mutex> guard(payloadLock);
+        clear();
+    }
+    receiver.reset(new SparkplugReceiver(server, clientId));
+    receiver->configure();
+    receiver->activate();
+}
+
 vector<PublishableUpdate> SparkplugHost::getPayloads(bool force)
 {
-    // map<std::string, tahu::Payload *> payloads;
     vector<PublishableUpdate> payloads;
-
     {
-        lock_guard<mutex> guard(stateLock);
+        lock_guard<mutex> guard(payloadLock);
         each([&payloads, force](Group *group)
              { group->appendTo(payloads, force); });
     }
@@ -137,6 +159,13 @@ void SparkplugHost::command(SparkplugMessage message)
 {
     lock_guard<mutex> guard(commandLock);
     commands.push_back(message);
+}
+
+void SparkplugHost::configure(std::string address)
+{
+    lock_guard<mutex> guard(receiverLock);
+    this->server = address;
+    buildReceiver();
 }
 
 SparkplugHost::SparkplugHost(std::string server, std::string clientId) : server(server), clientId(clientId)
