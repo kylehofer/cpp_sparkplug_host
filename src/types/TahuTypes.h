@@ -43,6 +43,8 @@ namespace tahu
     typedef org_eclipse_tahu_protobuf_Payload Payload;
     typedef org_eclipse_tahu_protobuf_Payload_Metric Metric;
     typedef org_eclipse_tahu_protobuf_Payload_PropertySet PropertySet;
+    typedef org_eclipse_tahu_protobuf_Payload_PropertySetList PropertySetList;
+    typedef org_eclipse_tahu_protobuf_Payload_PropertyValue_PropertyValueExtension PropertyValueExtension;
     typedef org_eclipse_tahu_protobuf_Payload_PropertyValue Property;
 }
 

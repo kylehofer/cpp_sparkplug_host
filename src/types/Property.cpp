@@ -30,6 +30,8 @@
  */
 
 #include "Property.h"
+#include "PropertySet.h"
+#include <pb_decode.h>
 
 using namespace std;
 
@@ -45,7 +47,22 @@ void Property::appendTo(tahu::PropertySet *propertySet, bool force)
         dirty = false;
     }
 
-    add_property_to_set(propertySet, name.c_str(), type, data, length);
+    if (type == PROPERTY_DATA_TYPE_PROPERTYSET)
+    {
+        tahu::PropertySet nestedSet;
+        memset(&nestedSet, 0, sizeof(tahu::PropertySet));
+
+        ((PropertySet *)data)->appendTo(&nestedSet, force);
+        add_property_to_set(propertySet, name.c_str(), type, &nestedSet, 0);
+
+        // We're allocating memory during appendTo, and the data is duplicated from
+        // the nestedSet to the propertySet. Because of this we must release the nestedSet
+        pb_release(org_eclipse_tahu_protobuf_Payload_PropertySet_fields, &nestedSet);
+    }
+    else
+    {
+        add_property_to_set(propertySet, name.c_str(), type, data, length);
+    }
 }
 
 ParseResult Property::process(tahu::Property *property)
@@ -90,17 +107,40 @@ ParseResult Property::process(tahu::Property *property)
     case PROPERTY_DATA_TYPE_STRING:
     case PROPERTY_DATA_TYPE_TEXT:
         length = strlen(property->value.string_value);
+    case PROPERTY_DATA_TYPE_PROPERTYSET:
+        length = sizeof(PropertySet);
         break;
     default:
         break;
     }
 
-    if (data)
+    if (property->type == PROPERTY_DATA_TYPE_PROPERTYSET)
     {
-        free(data);
+        if (!data)
+        {
+            data = new PropertySet();
+        }
+
+        PropertySet *propertySet = ((PropertySet *)data);
+        propertySet->process(&property->value.propertyset_value);
     }
-    data = malloc(length);
-    memcpy(data, &property->value, length);
+    else if (property->type == PROPERTY_DATA_TYPE_STRING ||
+             property->type == PROPERTY_DATA_TYPE_TEXT)
+    {
+        if (data)
+        {
+            free(data);
+        }
+        data = strdup(property->value.string_value);
+    }
+    else
+    {
+        if (!data)
+        {
+            data = malloc(length);
+        }
+        memcpy(data, &property->value, length);
+    }
 
     type = property->type;
 
@@ -114,9 +154,17 @@ bool Property::isDirty()
 
 void Property::clear()
 {
-    if ((type == PROPERTY_DATA_TYPE_STRING || type == PROPERTY_DATA_TYPE_TEXT) && data != nullptr)
+    if (data)
     {
-        free(data);
+        if (type == PROPERTY_DATA_TYPE_PROPERTYSET)
+        {
+            delete (PropertySet *)data;
+        }
+        else
+        {
+            free(data);
+        }
+
         data = nullptr;
     }
 

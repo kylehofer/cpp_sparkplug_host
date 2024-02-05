@@ -151,7 +151,6 @@ vector<PublishableUpdate> SparkplugHost::getPayloads(bool force)
         each([&payloads, force](Group *group)
              { group->appendTo(payloads, force); });
     }
-
     return payloads;
 }
 

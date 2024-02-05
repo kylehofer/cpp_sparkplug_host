@@ -50,15 +50,14 @@ private:
     std::string name;
 
 protected:
+public:
+    Property(std::string &name);
+    ~Property();
     /**
      * @brief Clears the data associated with this Property
      *
      */
     void clear();
-
-public:
-    Property(std::string &name);
-    ~Property();
     /**
      * @brief Appends this property to a Property Set if it has had changes
      *
