@@ -46,6 +46,9 @@ namespace tahu
     typedef org_eclipse_tahu_protobuf_Payload_PropertySetList PropertySetList;
     typedef org_eclipse_tahu_protobuf_Payload_PropertyValue_PropertyValueExtension PropertyValueExtension;
     typedef org_eclipse_tahu_protobuf_Payload_PropertyValue Property;
+    typedef org_eclipse_tahu_protobuf_Payload_DataSet DataSet;
+    typedef org_eclipse_tahu_protobuf_Payload_Template Template;
+    typedef org_eclipse_tahu_protobuf_Payload_Metric_MetricValueExtension MetricValueExtension;
 }
 
 bool appendPayload(tahu::Payload *base, tahu::Payload *input, bool isBirth);

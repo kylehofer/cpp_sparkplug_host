@@ -114,6 +114,10 @@ int SparkplugHost::run()
 void SparkplugHost::stop()
 {
     running = false;
+    if (receiver)
+    {
+        receiver->stop();
+    }
 }
 
 ParseResult SparkplugHost::process(SparkplugTopic &topic, tahu::Payload *payload)
@@ -138,7 +142,13 @@ void SparkplugHost::buildReceiver()
         lock_guard<mutex> guard(payloadLock);
         clear();
     }
-    receiver.reset(new SparkplugReceiver(server, clientId));
+
+    if (receiver)
+    {
+        receiver->stop();
+    }
+
+    receiver.reset(new SparkplugReceiver(server, clientId, hostId));
     receiver->configure();
     receiver->activate();
 }
@@ -168,5 +178,9 @@ void SparkplugHost::configure(std::string address)
 }
 
 SparkplugHost::SparkplugHost(std::string server, std::string clientId) : server(server), clientId(clientId)
+{
+}
+
+SparkplugHost::SparkplugHost(std::string server, std::string clientId, std::string hostId) : server(server), clientId(clientId), hostId(hostId)
 {
 }
