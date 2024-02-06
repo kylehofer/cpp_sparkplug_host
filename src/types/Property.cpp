@@ -79,7 +79,7 @@ inline void Property::clearValue()
     default:
         break;
     }
-    memset(&value, 0, sizeof(value));
+    memset(&value, 0, sizeof(PropertyValueUnion));
 }
 
 ParseResult Property::process(tahu::Property *property)

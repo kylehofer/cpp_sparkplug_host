@@ -46,11 +46,11 @@ class Property
 {
 private:
     size_t length;
-    uint32_t type;
+    uint32_t type = PROPERTY_DATA_TYPE_UNKNOWN;
     bool dirty;
     std::string name;
 
-    union
+    union PropertyValueUnion
     {
         uint32_t intValue;
         uint64_t longValue;

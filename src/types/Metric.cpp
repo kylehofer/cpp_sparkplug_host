@@ -92,7 +92,7 @@ inline void Metric::clearValue()
     default:
         break;
     }
-    memset(&value, 0, sizeof(value));
+    memset(&value, 0, sizeof(MetricValueUnion));
 }
 
 ParseResult Metric::process(tahu::Metric *metric)

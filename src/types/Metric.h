@@ -64,12 +64,12 @@ private:
     PropertySet propertySet;
     size_t length = 0;
     pb_size_t whichValue;
-    uint32_t type;
+    uint32_t type = METRIC_DATA_TYPE_UNKNOWN;
     std::string name;
     uint64_t timestamp;
     MetricFlags flags;
 
-    union
+    union MetricValueUnion
     {
         uint32_t intValue;
         uint64_t longValue;
