@@ -61,7 +61,14 @@ void Property::appendTo(tahu::PropertySet *propertySet, bool force)
     }
     else
     {
-        add_property_to_set(propertySet, name.c_str(), type, &value, length);
+        if (type == PROPERTY_DATA_TYPE_TEXT || type == PROPERTY_DATA_TYPE_STRING)
+        {
+            add_property_to_set(propertySet, name.c_str(), type, value.stringValue, length);
+        }
+        else
+        {
+            add_property_to_set(propertySet, name.c_str(), type, &value, length);
+        }
     }
 }
 
