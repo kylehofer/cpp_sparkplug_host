@@ -42,6 +42,11 @@
 
 ParseResult Node::process(SparkplugTopic &topic, tahu::Payload *payload)
 {
+    if (topic.isCommand())
+    {
+        return ParseResult::OK;
+    }
+
     if (topic.isBirth() && !topic.isDevice())
     {
         sequence = 0;

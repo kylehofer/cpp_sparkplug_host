@@ -62,15 +62,34 @@ class Metric
 private:
     tahu::Metric *source;
     PropertySet propertySet;
-    void *data = nullptr;
     size_t length = 0;
     pb_size_t whichValue;
-    uint32_t type;
+    uint32_t type = METRIC_DATA_TYPE_UNKNOWN;
     std::string name;
     uint64_t timestamp;
     MetricFlags flags;
 
+    union MetricValueUnion
+    {
+        uint32_t intValue;
+        uint64_t longValue;
+        float floatValue;
+        double doubleValue;
+        bool booleanValue;
+        char *stringValue;
+    } value;
+
+    /**
+     * @brief Clears the value on the Metric
+     * Frees any allocated memory
+     */
+    inline void clearValue();
+
 protected:
+    /**
+     * @brief Resets the Metric to a default value
+     * Frees any allocated memory
+     */
     void clear();
 
 public:

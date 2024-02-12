@@ -64,7 +64,7 @@ void Metric::appendTo(tahu::Payload *payload, bool force)
     metric->has_alias = false;
     metric->has_is_historical = metric->is_historical = flags.isHistorical;
     metric->has_is_transient = metric->is_transient = flags.isTransient;
-    metric->has_is_null = metric->is_null = data == nullptr;
+    metric->has_is_null = metric->is_null = flags.isNull;
     metric->has_timestamp = flags.hasTimestamp;
     metric->datatype = this->type;
     metric->has_datatype = true;
@@ -74,17 +74,29 @@ void Metric::appendTo(tahu::Payload *payload, bool force)
 
     metric->name = strdup(name.c_str());
 
-    memcpy(&metric->value, data, length);
+    memcpy(&metric->value, &value, sizeof(value));
 
     add_metric_to_payload(payload, metric);
 
     free(metric);
 }
 
+inline void Metric::clearValue()
+{
+    switch (type)
+    {
+    case METRIC_DATA_TYPE_STRING:
+    case METRIC_DATA_TYPE_TEXT:
+        free(value.stringValue);
+        break;
+    default:
+        break;
+    }
+    memset(&value, 0, sizeof(MetricValueUnion));
+}
+
 ParseResult Metric::process(tahu::Metric *metric)
 {
-    clear();
-
     flags.dirty = true;
 
     if (metric->datatype != type && type != PROPERTY_DATA_TYPE_UNKNOWN)
@@ -120,33 +132,44 @@ ParseResult Metric::process(tahu::Metric *metric)
         case METRIC_DATA_TYPE_INT8:
         case METRIC_DATA_TYPE_UINT8:
             length = sizeof(int8_t);
-
+            value.intValue = metric->value.int_value;
             break;
         case METRIC_DATA_TYPE_INT16:
         case METRIC_DATA_TYPE_UINT16:
             length = sizeof(int16_t);
+            value.intValue = metric->value.int_value;
             break;
         case METRIC_DATA_TYPE_INT32:
         case METRIC_DATA_TYPE_UINT32:
             length = sizeof(int32_t);
+            value.intValue = metric->value.int_value;
             break;
         case METRIC_DATA_TYPE_INT64:
         case METRIC_DATA_TYPE_UINT64:
         case METRIC_DATA_TYPE_DATETIME:
             length = sizeof(int64_t);
+            value.longValue = metric->value.long_value;
             break;
         case METRIC_DATA_TYPE_FLOAT:
             length = sizeof(float);
+            value.floatValue = metric->value.float_value;
             break;
         case METRIC_DATA_TYPE_DOUBLE:
             length = sizeof(double);
+            value.doubleValue = metric->value.double_value;
             break;
         case METRIC_DATA_TYPE_BOOLEAN:
             length = sizeof(bool);
+            value.booleanValue = metric->value.boolean_value;
             break;
         case METRIC_DATA_TYPE_STRING:
         case METRIC_DATA_TYPE_TEXT:
+            if (value.stringValue)
+            {
+                free(value.stringValue);
+            }
             length = strlen(metric->value.string_value);
+            value.stringValue = strdup(metric->value.string_value);
             break;
         case METRIC_DATA_TYPE_BYTES:
         case METRIC_DATA_TYPE_DATASET:
@@ -154,31 +177,18 @@ ParseResult Metric::process(tahu::Metric *metric)
         case METRIC_DATA_TYPE_UNKNOWN:
         default:
             flags.isNull = true;
-            data = nullptr;
+            clearValue();
             break;
         }
     }
     else
     {
-        flags.isNull = true;
-        if (data)
-        {
-            free(data);
-        }
-        data = nullptr;
+        clearValue();
     }
 
-    if (!flags.isNull)
-    {
-        if (data)
-        {
-            free(data);
-        }
-        data = malloc(length);
-        memcpy(data, &metric->value, length);
-    }
     whichValue = metric->which_value;
     type = metric->datatype;
+
     return ParseResult::OK;
 }
 
@@ -189,11 +199,7 @@ bool Metric::isDirty()
 
 void Metric::clear()
 {
-    if ((type == METRIC_DATA_TYPE_STRING || type == METRIC_DATA_TYPE_TEXT) && !flags.isNull)
-    {
-        free(data);
-        data = nullptr;
-    }
+    clearValue();
 
     flags.data = 0;
     timestamp = 0;
@@ -202,6 +208,7 @@ void Metric::clear()
 
 Metric::Metric(string &name)
 {
+    clearValue();
     this->name = string(name);
 }
 

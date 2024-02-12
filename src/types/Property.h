@@ -36,6 +36,8 @@
 #include "CommonTypes.h"
 #include <string>
 
+class PropertySet;
+
 /**
  * @brief A class that represents a Sparkplug Property
  *
@@ -43,22 +45,37 @@
 class Property
 {
 private:
-    void *data = nullptr;
     size_t length;
-    uint32_t type;
+    uint32_t type = PROPERTY_DATA_TYPE_UNKNOWN;
     bool dirty;
     std::string name;
 
+    union PropertyValueUnion
+    {
+        uint32_t intValue;
+        uint64_t longValue;
+        float floatValue;
+        double doubleValue;
+        bool booleanValue;
+        char *stringValue;
+        PropertySet *propertySetValue;
+    } value;
+
+    /**
+     * @brief Clears the value on the Property
+     * Frees any allocated memory
+     */
+    inline void clearValue();
+
 protected:
+public:
+    Property(std::string &name);
+    ~Property();
     /**
      * @brief Clears the data associated with this Property
      *
      */
     void clear();
-
-public:
-    Property(std::string &name);
-    ~Property();
     /**
      * @brief Appends this property to a Property Set if it has had changes
      *

@@ -35,6 +35,7 @@
 #include "mqtt/async_client.h"
 #include "types/TahuTypes.h"
 #include "utilities/SparkplugTopic.h"
+#include "mqtt/iaction_listener.h"
 
 using namespace std;
 
@@ -55,12 +56,18 @@ public:
  * @brief A Mqtt Client for both sending and receiving sparkplug payloads
  *
  */
-class SparkplugReceiver
+class SparkplugReceiver : mqtt::iaction_listener
 {
 private:
+    mqtt::will_options will;
     mqtt::connect_options connectionOptions;
     mqtt::async_client client;
-    const mqtt::subscribe_options options = mqtt::subscribe_options(
+    std::string hostId;
+    std::string hostIdTopic;
+    std::string hostIdOffline;
+    std::string hostIdOnline;
+    uint64_t connectTime = 0;
+    const mqtt::subscribe_options SUBSCRIBE_OPTIONS = mqtt::subscribe_options(
         mqtt::subscribe_options::SUBSCRIBE_NO_LOCAL,
         false,
         mqtt::subscribe_options::DONT_SEND_RETAINED);
@@ -80,6 +87,15 @@ public:
      * @param clientId MQTT Client Id
      */
     SparkplugReceiver(string address, string clientId);
+
+    /**
+     * @brief Construct a new Sparkplug Receiver as a Primary Host
+     *
+     * @param address The address of the mqtt server to listen to
+     * @param clientId MQTT Client Id
+     * @param hostId The Sparkplug Primary Host Id
+     */
+    SparkplugReceiver(string address, string clientId, string hostId);
 
     ~SparkplugReceiver();
 
@@ -128,6 +144,23 @@ public:
      * @return int
      */
     int command(SparkplugMessage &message);
+
+    /**
+     * This method is invoked when an action fails.
+     * @param asyncActionToken
+     */
+    virtual void on_failure(const mqtt::token &asyncActionToken) override;
+    /**
+     * This method is invoked when an action has completed successfully.
+     * @param asyncActionToken
+     */
+    virtual void on_success(const mqtt::token &asyncActionToken) override;
+
+    /**
+     * @brief Stops the receiver, disconnecting from the broker
+     *
+     */
+    void stop();
 };
 
 #endif /* SRC_SPARKPLUGRECEIVER */

@@ -53,6 +53,7 @@ class SparkplugHost : public DataCollection<Group>
 private:
     std::string server;
     std::string clientId;
+    std::string hostId;
     mutex payloadLock;
     mutex commandLock;
     mutex receiverLock;
@@ -73,6 +74,13 @@ public:
      * @param clientId
      */
     SparkplugHost(std::string server, std::string clientId);
+    /**
+     * @brief Construct a new Sparkplug Host on a MQTT Server with a specific Client Id as a Primary Host
+     *
+     * @param server
+     * @param clientId
+     */
+    SparkplugHost(std::string server, std::string clientId, std::string hostId);
     /**
      * @brief Blocking Control loop.
      * Connects to MQTT Server and starts consuming messages.
