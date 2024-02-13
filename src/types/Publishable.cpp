@@ -81,6 +81,7 @@ ParseResult Publishable::process(SparkplugTopic &topic, tahu::Payload *payload)
                 return ParseResult::OK;
             }
         }
+        lastValidMessage = payload->timestamp;
         loadPayload(payload);
         return ParseResult::OK;
     }
@@ -90,6 +91,7 @@ ParseResult Publishable::process(SparkplugTopic &topic, tahu::Payload *payload)
         actionState = ActionState::NOTHING;
         changedState = ChangedState::CHANGES;
         birthed();
+        lastValidMessage = payload->timestamp;
         loadPayload(payload, true);
         return ParseResult::OK;
     }
@@ -158,7 +160,8 @@ void Publishable::appendTo(std::vector<PublishableUpdate> &payloads, bool force)
     memset(payload, 0, sizeof(org_eclipse_tahu_protobuf_Payload));
 
     payload->has_seq = false;
-    payload->has_timestamp = false;
+    payload->has_timestamp = true;
+    payload->timestamp = lastValidMessage;
 
     each([payload, force](Metric *metric)
          { metric->appendTo(payload, force); });

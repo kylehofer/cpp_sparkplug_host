@@ -42,6 +42,7 @@
 #include "CommonTypes.h"
 #include "TahuTypes.h"
 #include "Metric.h"
+#include <time.h>
 
 enum class PublishableState
 {
@@ -77,6 +78,7 @@ private:
      * @return ParseResult
      */
     ParseResult loadPayload(tahu::Payload *payload, bool isBirth = false);
+    time_t lastValidMessage = 0;
 
 protected:
     std::string name;
