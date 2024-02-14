@@ -20,7 +20,7 @@ IF(FETCH_REMOTE)
     FetchContent_Declare(
         pico_tahu
         GIT_REPOSITORY https://github.com/kylehofer/pico_tahu.git
-        GIT_TAG propertySetSupport
+        GIT_TAG main
     )
     FetchContent_MakeAvailable(pico_tahu)
 ELSE()
