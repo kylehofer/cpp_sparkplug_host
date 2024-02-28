@@ -63,6 +63,9 @@ private:
     mqtt::connect_options connectionOptions;
     mqtt::async_client client;
     std::string hostId;
+    std::string username;
+    std::string password;
+    bool useSsl = false;
     std::string hostIdTopic;
     std::string hostIdOffline;
     std::string hostIdOnline;
@@ -161,6 +164,8 @@ public:
      *
      */
     void stop();
+
+    void credentials(std::string username, std::string password);
 };
 
 #endif /* SRC_SPARKPLUGRECEIVER */

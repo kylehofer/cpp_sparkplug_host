@@ -149,6 +149,7 @@ void SparkplugHost::buildReceiver()
     }
 
     receiver.reset(new SparkplugReceiver(server, clientId, hostId));
+    receiver->credentials(username, password);
     receiver->configure();
     receiver->activate();
 }
@@ -183,4 +184,12 @@ SparkplugHost::SparkplugHost(std::string server, std::string clientId) : server(
 
 SparkplugHost::SparkplugHost(std::string server, std::string clientId, std::string hostId) : server(server), clientId(clientId), hostId(hostId)
 {
+}
+
+void SparkplugHost::credentials(std::string username, std::string password)
+{
+    lock_guard<mutex> guard(receiverLock);
+    this->username = username;
+    this->password = password;
+    buildReceiver();
 }

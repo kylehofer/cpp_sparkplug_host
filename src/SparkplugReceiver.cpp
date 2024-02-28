@@ -71,6 +71,7 @@ SparkplugReceiver::~SparkplugReceiver()
 {
     client.stop_consuming();
     client.disable_callbacks();
+
     if (client.is_connected())
     {
         client.disconnect();
@@ -93,6 +94,16 @@ int SparkplugReceiver::configure()
                                  .clean_start(true)
                                  .clean_session(true)
                                  .automatic_reconnect(seconds(1), seconds(10));
+
+    if (!username.empty())
+    {
+        mqtt::connect_options_builder().user_name(username);
+    }
+
+    if (!password.empty())
+    {
+        mqtt::connect_options_builder().password(password);
+    }
 
     if (!hostId.empty())
     {
@@ -268,4 +279,10 @@ void SparkplugReceiver::stop()
 
         client.disconnect()->wait();
     }
+}
+
+void SparkplugReceiver::credentials(std::string username, std::string password)
+{
+    this->username = username;
+    this->password = password;
 }
