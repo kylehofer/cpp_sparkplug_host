@@ -110,12 +110,12 @@ int SparkplugReceiver::configure()
 
     if (!username.empty())
     {
-        mqtt::connect_options_builder().user_name(username);
+        mqtt::connect_options_builder().user_name(username.c_str());
     }
 
     if (!password.empty())
     {
-        mqtt::connect_options_builder().password(mqtt::binary_ref(password));
+        mqtt::connect_options_builder().password(password.c_str());
     }
 
     if (!hostId.empty())
