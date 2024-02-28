@@ -97,12 +97,14 @@ int SparkplugReceiver::configure()
 
     if (!username.empty())
     {
+        printf("connecting with username: %s\n", username.c_str());
         mqtt::connect_options_builder().user_name(username);
     }
 
     if (!password.empty())
     {
-        mqtt::connect_options_builder().password(password);
+        printf("connecting with password: %s\n", password.c_str());
+        mqtt::connect_options_builder().password(mqtt::binary_ref(password));
     }
 
     if (!hostId.empty())

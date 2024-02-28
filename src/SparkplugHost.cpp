@@ -191,5 +191,8 @@ void SparkplugHost::credentials(std::string username, std::string password)
     lock_guard<mutex> guard(receiverLock);
     this->username = username;
     this->password = password;
-    buildReceiver();
+    if (receiver)
+    {
+        buildReceiver();
+    }
 }
