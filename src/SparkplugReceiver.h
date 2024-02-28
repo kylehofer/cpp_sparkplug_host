@@ -70,6 +70,7 @@ private:
     std::string hostIdOffline;
     std::string hostIdOnline;
     uint64_t connectTime = 0;
+    mqtt::ssl_options sslOptions;
     const mqtt::subscribe_options SUBSCRIBE_OPTIONS = mqtt::subscribe_options(
         mqtt::subscribe_options::SUBSCRIBE_NO_LOCAL,
         false,

@@ -105,7 +105,7 @@ int SparkplugReceiver::configure()
 
     if (useSsl)
     {
-        connectionBuilder.ssl(mqtt::ssl_options());
+        connectionBuilder.ssl(sslOptions);
     }
 
     if (!username.empty())
