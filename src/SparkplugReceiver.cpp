@@ -103,7 +103,10 @@ int SparkplugReceiver::configure()
                                  .clean_session(true)
                                  .automatic_reconnect(seconds(1), seconds(10));
 
-    connectionBuilder.ssl(useSsl);
+    if (useSsl)
+    {
+        connectionBuilder.ssl(mqtt::ssl_options());
+    }
 
     if (!username.empty())
     {
