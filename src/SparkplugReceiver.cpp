@@ -200,6 +200,7 @@ int SparkplugReceiver::rebirth(const std::string &topic)
 
     free_payload(payload);
     free(payload);
+    free(buffer);
     return 0;
 }
 

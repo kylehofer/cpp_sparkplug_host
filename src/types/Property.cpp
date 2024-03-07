@@ -78,7 +78,10 @@ inline void Property::clearValue()
     {
     case PROPERTY_DATA_TYPE_STRING:
     case PROPERTY_DATA_TYPE_TEXT:
-        free(value.stringValue);
+        if (value.stringValue)
+        {
+            free(value.stringValue);
+        }
         break;
     case PROPERTY_DATA_TYPE_PROPERTYSET:
         delete value.propertySetValue;
@@ -139,7 +142,7 @@ ParseResult Property::process(tahu::Property *property)
         {
             free(value.stringValue);
         }
-        length = strlen(property->value.string_value);
+        length = strlen(property->value.string_value) + 1;
         value.stringValue = strdup(property->value.string_value);
         break;
     case PROPERTY_DATA_TYPE_PROPERTYSET:
