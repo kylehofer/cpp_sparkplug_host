@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.17)
 include(cmake/CPM.cmake)
 
 SET(BUILD_TARGET LINUX)
-SET(PAHO_BUILD_SHARED TRUE)
 
 project(cpp_sparkplug_host C CXX ASM)
 set(CMAKE_C_STANDARD 11)
@@ -11,14 +10,21 @@ set(CMAKE_CXX_STANDARD 20)
 
 SET(FETCH_REMOTE ON CACHE BOOL "")
 SET(CPP_SPARKPLUG_HOST_SHARED ON CACHE BOOL "")
-SET(CPP_SPARKPLUG_HOST_STATIC OFF CACHE BOOL "")
+
+IF(NOT CPP_SPARKPLUG_HOST_SHARED)
+    SET(CPP_SPARKPLUG_HOST_STATIC ON)
+ENDIF()
 
 # Finding all of our source files
 file(GLOB_RECURSE SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*.cpp")
 file(GLOB_RECURSE HEADERS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*.h*")
 
 # Main library compiling
-add_library(cpp_sparkplug_host SHARED ${SOURCES})
+IF(CPP_SPARKPLUG_HOST_SHARED)
+    add_library(cpp_sparkplug_host SHARED ${SOURCES})
+ELSE()
+    add_library(cpp_sparkplug_host STATIC ${SOURCES})
+ENDIF()
 
 IF(FETCH_REMOTE)
     CPMAddPackage(
