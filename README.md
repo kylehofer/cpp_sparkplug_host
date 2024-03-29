@@ -22,6 +22,8 @@ The following build flags are supported:
 | Flag  | Default | Description |
 | ------------- | ------------- |  ------------- |
 | FETCH_REMOTE | ON | Whether to fetch remote dependencies through cmake. If disabled, the remote dependencies can be put within {PROJECT_ROOT}/external. |
+| CPP_SPARKPLUG_HOST_STATIC | OFF | Builds as a static library. |
+| CPP_SPARKPLUG_HOST_SHARED | ON | Builds as a shared library. |
 
 ## Dependencies
 The following dependencies will be pulled and built by cmake:
