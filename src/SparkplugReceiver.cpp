@@ -57,10 +57,18 @@ const mqtt::create_options createOptions(MQTTVERSION_5);
 
 SparkplugReceiver::SparkplugReceiver(string address) : client(address, "", createOptions)
 {
+    if (address.find("ssl://") != std::string::npos)
+    {
+        useSsl = true;
+    }
 }
 SparkplugReceiver::SparkplugReceiver(string address, string clientId) : client(address, clientId, createOptions)
 {
     LOGGER("Configured to connect to %s.\n", address.c_str());
+    if (address.find("ssl://") != std::string::npos)
+    {
+        useSsl = true;
+    }
 }
 
 SparkplugReceiver::SparkplugReceiver(string address, string clientId, string hostId) : client(address, clientId, createOptions), hostId(hostId)
@@ -71,6 +79,7 @@ SparkplugReceiver::~SparkplugReceiver()
 {
     client.stop_consuming();
     client.disable_callbacks();
+
     if (client.is_connected())
     {
         client.disconnect();
@@ -93,6 +102,21 @@ int SparkplugReceiver::configure()
                                  .clean_start(true)
                                  .clean_session(true)
                                  .automatic_reconnect(seconds(1), seconds(10));
+
+    if (useSsl)
+    {
+        connectionBuilder.ssl(sslOptions);
+    }
+
+    if (!username.empty())
+    {
+        connectionBuilder.user_name(username);
+    }
+
+    if (!password.empty())
+    {
+        connectionBuilder.password(password);
+    }
 
     if (!hostId.empty())
     {
@@ -269,4 +293,10 @@ void SparkplugReceiver::stop()
 
         client.disconnect()->wait();
     }
+}
+
+void SparkplugReceiver::credentials(std::string username, std::string password)
+{
+    this->username = username;
+    this->password = password;
 }

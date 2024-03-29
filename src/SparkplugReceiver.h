@@ -63,10 +63,14 @@ private:
     mqtt::connect_options connectionOptions;
     mqtt::async_client client;
     std::string hostId;
+    std::string username;
+    std::string password;
+    bool useSsl = false;
     std::string hostIdTopic;
     std::string hostIdOffline;
     std::string hostIdOnline;
     uint64_t connectTime = 0;
+    mqtt::ssl_options sslOptions;
     const mqtt::subscribe_options SUBSCRIBE_OPTIONS = mqtt::subscribe_options(
         mqtt::subscribe_options::SUBSCRIBE_NO_LOCAL,
         false,
@@ -161,6 +165,8 @@ public:
      *
      */
     void stop();
+
+    void credentials(std::string username, std::string password);
 };
 
 #endif /* SRC_SPARKPLUGRECEIVER */

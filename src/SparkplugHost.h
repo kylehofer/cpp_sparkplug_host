@@ -54,6 +54,9 @@ private:
     std::string server;
     std::string clientId;
     std::string hostId;
+    std::string username;
+    std::string password;
+
     mutex payloadLock;
     mutex commandLock;
     mutex receiverLock;
@@ -116,6 +119,14 @@ public:
      * @param address
      */
     void configure(std::string address);
+
+    /**
+     * @brief Enables and sets the Username and Password for the MQTT connection
+     *
+     * @param username
+     * @param password
+     */
+    void credentials(std::string username, std::string password);
 };
 
 #endif /* SRC_SPARKPLUGHOST */
