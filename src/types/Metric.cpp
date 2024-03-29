@@ -74,7 +74,14 @@ void Metric::appendTo(tahu::Payload *payload, bool force)
 
     metric->name = strdup(name.c_str());
 
-    memcpy(&metric->value, &value, sizeof(value));
+    if (type == METRIC_DATA_TYPE_STRING || type == METRIC_DATA_TYPE_TEXT)
+    {
+        metric->value.string_value = strdup(value.stringValue);
+    }
+    else
+    {
+        memcpy(&metric->value, &value, sizeof(value));
+    }
 
     add_metric_to_payload(payload, metric);
 
@@ -87,7 +94,10 @@ inline void Metric::clearValue()
     {
     case METRIC_DATA_TYPE_STRING:
     case METRIC_DATA_TYPE_TEXT:
-        free(value.stringValue);
+        if (value.stringValue)
+        {
+            free(value.stringValue);
+        }
         break;
     default:
         break;
@@ -168,8 +178,16 @@ ParseResult Metric::process(tahu::Metric *metric)
             {
                 free(value.stringValue);
             }
-            length = strlen(metric->value.string_value);
-            value.stringValue = strdup(metric->value.string_value);
+            if (metric->value.string_value)
+            {
+                length = strlen(metric->value.string_value) + 1;
+                value.stringValue = strdup(metric->value.string_value);
+            }
+            else
+            {
+                length = 0;
+                value.stringValue = nullptr;
+            }
             break;
         case METRIC_DATA_TYPE_BYTES:
         case METRIC_DATA_TYPE_DATASET:
