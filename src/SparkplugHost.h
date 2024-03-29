@@ -119,6 +119,13 @@ public:
      * @param address
      */
     void configure(std::string address);
+
+    /**
+     * @brief Enables and sets the Username and Password for the MQTT connection
+     *
+     * @param username
+     * @param password
+     */
     void credentials(std::string username, std::string password);
 };
 
