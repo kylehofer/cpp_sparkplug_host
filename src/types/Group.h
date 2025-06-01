@@ -49,9 +49,9 @@ private:
 
 protected:
 public:
-    Group(){};
-    Group(std::string name) : name(name){};
-    ~Group(){};
+    Group() {};
+    Group(std::string name) : name(name) {};
+    ~Group() {};
     /**
      * @brief Processes a Payload for a Node/Device on a group
      *

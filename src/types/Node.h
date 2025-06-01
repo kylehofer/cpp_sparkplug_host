@@ -46,8 +46,8 @@ private:
 
 protected:
 public:
-    Node(){};
-    Node(std::string name) : Publishable(name){};
+    Node() {};
+    Node(std::string name) : Publishable(name) {};
     /**
      * @brief Processes a Payload that has come from a topic
      * Will validate the sequence and sparkplug payload.

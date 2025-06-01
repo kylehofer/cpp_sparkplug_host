@@ -46,8 +46,8 @@ using namespace std;
 struct SparkplugMessage
 {
 public:
-    SparkplugMessage(){};
-    SparkplugMessage(string topic, tahu::Payload *payload) : topic(topic), payload(payload){};
+    SparkplugMessage() {};
+    SparkplugMessage(string topic, tahu::Payload *payload) : topic(topic), payload(payload) {};
     string topic;
     tahu::Payload *payload;
 };
@@ -72,7 +72,7 @@ private:
     uint64_t connectTime = 0;
     mqtt::ssl_options sslOptions;
     const mqtt::subscribe_options SUBSCRIBE_OPTIONS = mqtt::subscribe_options(
-        mqtt::subscribe_options::SUBSCRIBE_NO_LOCAL,
+        mqtt::subscribe_options::NO_LOCAL,
         false,
         mqtt::subscribe_options::DONT_SEND_RETAINED);
 
