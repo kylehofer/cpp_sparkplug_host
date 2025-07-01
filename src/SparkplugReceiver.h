@@ -61,11 +61,13 @@ class SparkplugReceiver : mqtt::iaction_listener
 private:
     mqtt::will_options will;
     mqtt::connect_options connectionOptions;
+    std::string address;
+    std::string clientId;
     mqtt::async_client client;
     std::string hostId;
     std::string username;
     std::string password;
-    bool useSsl = false;
+    bool useSsl;
     std::string hostIdTopic;
     std::string hostIdOffline;
     std::string hostIdOnline;
@@ -75,6 +77,8 @@ private:
         mqtt::subscribe_options::NO_LOCAL,
         false,
         mqtt::subscribe_options::DONT_SEND_RETAINED);
+
+    mqtt::async_client configureClient();
 
 protected:
 public:
