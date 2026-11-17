@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<!--
+    HiveMQ configuration for the Sparkplug TCK, based on tck/hivemq-configuration/config.xml
+    from eclipse-sparkplug/sparkplug. TCP on 1883 for the edge node and the runner, and
+    WebSockets on 8000 (/mqtt) so the TCK's web console can still be used by hand.
+-->
+<hivemq>
+    <listeners>
+        <tcp-listener>
+            <port>1883</port>
+            <bind-address>0.0.0.0</bind-address>
+        </tcp-listener>
+        <websocket-listener>
+            <port>8000</port>
+            <bind-address>0.0.0.0</bind-address>
+            <path>/mqtt</path>
+            <subprotocols>
+                <subprotocol>mqttv3.1</subprotocol>
+                <subprotocol>mqtt</subprotocol>
+            </subprotocols>
+            <allow-extensions>true</allow-extensions>
+        </websocket-listener>
+    </listeners>
+
+    <anonymous-usage-statistics>
+        <enabled>false</enabled>
+    </anonymous-usage-statistics>
+</hivemq>

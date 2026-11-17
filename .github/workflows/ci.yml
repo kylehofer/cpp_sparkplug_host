@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: Build and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  tck:
+    name: Sparkplug TCK (host profile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+
+      - name: Build tck_host
+        run: |
+          cmake -S tck -B build/tck -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/tck -j --target tck_host
+
+      # The image builds the TCK from source, which takes several minutes; the layer cache keeps
+      # later runs fast until tck/broker changes.
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the TCK broker image
+        uses: docker/build-push-action@v6
+        with:
+          context: tck/broker
+          tags: cpp-sparkplug-host-tck
+          load: true
+          cache-from: type=gha,scope=tck-broker
+          cache-to: type=gha,mode=max,scope=tck-broker
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the runner's dependencies
+        run: pip install -r tck/requirements.txt
+
+      - name: Run the TCK
+        run: >
+          python tck/run_tck.py
+          --host-app build/tck/tck_host
+          --docker
+          --known-failures tck/known_failures.txt
+
+      - name: Upload the TCK results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tck-results
+          path: build/tck/results/
+          if-no-files-found: ignore
