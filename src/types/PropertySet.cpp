@@ -31,55 +31,44 @@
 
 #include "PropertySet.h"
 
-void PropertySet::appendTo(tahu::Metric *metric, bool force)
+void PropertySet::appendTo(tahu::Metric *metric, bool force, bool consume)
 {
-    if (size() == 0)
-    {
-        return;
-    }
-
     bool hasChanges = force || any([](Property *property)
                                    { return property->isDirty(); });
 
-    if (!hasChanges)
+    if (size() == 0 || !hasChanges)
     {
         return;
     }
 
     metric->has_properties = true;
-    each([&metric, force](Property *property)
-         { property->appendTo(&metric->properties, force); });
+    appendTo(&metric->properties, force, consume);
 }
 
-void PropertySet::appendTo(tahu::PropertySet *propertySet, bool force)
+void PropertySet::appendTo(tahu::PropertySet *propertySet, bool force, bool consume)
 {
-    if (size() == 0)
-    {
-        return;
-    }
-
-    bool hasChanges = force || any([](Property *property)
-                                   { return property->isDirty(); });
-
-    if (!hasChanges)
-    {
-        return;
-    }
-
-    each([&propertySet, force](Property *property)
-         { property->appendTo(propertySet, force); });
+    each([propertySet, force, consume](Property *property)
+         { property->appendTo(propertySet, force, consume); });
 }
 
-ParseResult PropertySet::process(tahu::PropertySet *propertySet)
+ParseResult PropertySet::process(const tahu::PropertySet *propertySet)
 {
-    for (size_t i = 0; i < propertySet->keys_count; i++)
+    ParseResult result = ParseResult::OK;
+    size_t count = propertySet->keys_count < propertySet->values_count
+                       ? propertySet->keys_count
+                       : propertySet->values_count;
+
+    for (size_t i = 0; i < count; i++)
     {
         const char *key = propertySet->keys[i];
-        auto property = get(key);
-        if (property->process(&propertySet->values[i]) == ParseResult::OUT_OF_SYNC)
+        if (!key)
         {
-            return ParseResult::OUT_OF_SYNC;
-        };
+            continue;
+        }
+        if (get(key)->process(&propertySet->values[i]) == ParseResult::OUT_OF_SYNC)
+        {
+            result = ParseResult::OUT_OF_SYNC;
+        }
     }
-    return ParseResult::OK;
+    return result;
 }

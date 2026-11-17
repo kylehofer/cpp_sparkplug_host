@@ -33,113 +33,104 @@
 #define SRC_TYPES_PUBLISHABLE
 
 #include "tahu.h"
-#include <vector>
-#include <string>
-#include "../SparkplugReceiver.h"
 #include "../DataCollection.h"
 #include "../utilities/SparkplugTopic.h"
-#include "PublishableUpdate.h"
 #include "CommonTypes.h"
-#include "TahuTypes.h"
 #include "Metric.h"
-#include <time.h>
+#include "PublishableUpdate.h"
+#include "TahuTypes.h"
+#include <cstdint>
+#include <map>
+#include <string>
+#include <vector>
 
+/**
+ * @brief Whether a Node or Device is currently online
+ *
+ */
 enum class PublishableState
 {
-    ACTIVE,
-    BIRTHED,
-    STALE
-};
-
-enum class ActionState
-{
-    NOTHING,
-    REBIRTH
-};
-
-enum class ChangedState
-{
-    NOTHING,
-    CHANGES
+    ONLINE,
+    OFFLINE
 };
 
 /**
- * @brief A class for representing a Sparkplug Publishable (e.g. Node, Device).
+ * @brief Common state for a Sparkplug Node or Device: online state, metrics and metric aliases.
  *
  */
 class Publishable : public DataCollection<Metric>
 {
 private:
-    /**
-     * @brief Loads the payload into the Publishable
-     *
-     * @param payload
-     * @param isBirth
-     * @return ParseResult
-     */
-    ParseResult loadPayload(tahu::Payload *payload, bool isBirth = false);
-    time_t lastValidMessage = 0;
+    std::map<uint64_t, std::string> aliases;
+    uint64_t lastTimestamp = 0;
+    bool birthPending = false;
+    bool deathPending = false;
 
 protected:
     std::string name;
-    PublishableState state = PublishableState::STALE;
-    ActionState actionState = ActionState::NOTHING;
-    ChangedState changedState = ChangedState::NOTHING;
+    PublishableState state = PublishableState::OFFLINE;
+
+    /**
+     * @brief Loads the metrics of a payload. Every metric is processed, even if an earlier one fails.
+     *
+     * @param payload
+     * @param isBirth Births replace all metrics and define aliases. Data may only update known metrics.
+     * @return ParseResult OUT_OF_SYNC if any metric was unknown, had an unknown alias, or changed type
+     */
+    ParseResult loadPayload(const tahu::Payload *payload, bool isBirth);
 
 public:
-    /**
-     * @brief Construct a new Publishable object
-     *
-     */
-    Publishable(){};
-    /**
-     * @brief Construct a new Publishable with a unique name
-     *
-     * @param name
-     */
-    Publishable(std::string name);
+    explicit Publishable(const std::string &name);
     virtual ~Publishable();
+
     /**
-     * @brief Creates and appends a Payload to the list containing
-     * all the data of this Publisher
+     * @brief Appends an update describing what changed since the last call.
+     *
+     * Appends a BIRTH after the entity was birthed, a DEATH after it went offline,
+     * or a PUBLISH holding the changed metrics. Appends nothing if nothing changed.
      *
      * @param payloads
-     * @param force
+     * @param force Append a full BIRTH (or DEATH if offline) without consuming any pending changes
      */
     void appendTo(std::vector<PublishableUpdate> &payloads, bool force = false);
     /**
-     * @brief Processes a payload for this Publisher
-     * Will load all data from Metrics
+     * @brief Processes a birth, death or data message for this entity.
+     * Sequence numbers are handled by the owning Node.
      *
      * @param topic
      * @param payload
-     * @return ParseResult
+     * @return ParseResult OUT_OF_SYNC if a rebirth is needed
      */
-    ParseResult process(SparkplugTopic &topic, tahu::Payload *payload);
+    ParseResult process(const SparkplugTopic &topic, const tahu::Payload *payload);
 
-    bool hasMetric(tahu::Metric &metric);
     /**
-     * @brief Marks the Publisher as Stale (Dead)
+     * @brief Marks the entity as offline. A DEATH update is reported on the next appendTo().
      *
      */
-    void stale();
+    virtual void markOffline();
+
     /**
-     * @brief Marks the Publisher as Birthed (Alive)
+     * @brief Whether the entity is currently online
      *
+     * @return true
+     * @return false
      */
-    void birthed();
+    bool isOnline() const;
+
     /**
-     * @brief Marks the Publisher as Active (Alive)
+     * @brief The entity's id: "group/node" or "group/node/device"
      *
+     * @return const std::string&
      */
-    void active();
+    const std::string &getName() const;
+
     /**
      * @brief Whether the Publisher is a Device
      *
      * @return true
      * @return false
      */
-    virtual inline bool isDevice() = 0;
+    virtual bool isDevice() const = 0;
 };
 
 #endif /* SRC_TYPES_PUBLISHABLE */

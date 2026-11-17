@@ -30,59 +30,152 @@
  */
 
 #include "Node.h"
+#include "../utilities/LogMacros.h"
+#include <atomic>
+#include <cstring>
 
-#define DEBUGGING 1
-#ifdef DEBUGGING
-#define LOGGER(format, ...) \
-    printf("Node: ");       \
-    printf(format, ##__VA_ARGS__)
-#else
-#define LOGGER(out, ...)
-#endif
+namespace
+{
+    const char *const COMPONENT = "Node";
+    const char *const BDSEQ_METRIC = "bdSeq";
 
-ParseResult Node::process(SparkplugTopic &topic, tahu::Payload *payload)
+    std::atomic<int64_t> rebirthRetryIntervalMs{5000};
+
+    std::optional<uint64_t> findBdSeq(const tahu::Payload *payload)
+    {
+        for (size_t i = 0; i < payload->metrics_count; i++)
+        {
+            const tahu::Metric *metric = &payload->metrics[i];
+            if (metric->name && strcmp(metric->name, BDSEQ_METRIC) == 0)
+            {
+                return tahu::readUnsigned(metric);
+            }
+        }
+        return std::nullopt;
+    }
+}
+
+Node::Node(const std::string &name) : Publishable(name)
+{
+}
+
+void Node::setRebirthRetryInterval(std::chrono::milliseconds interval)
+{
+    rebirthRetryIntervalMs = interval.count();
+}
+
+std::chrono::milliseconds Node::getRebirthRetryInterval()
+{
+    return std::chrono::milliseconds(rebirthRetryIntervalMs.load());
+}
+
+ParseResult Node::requestRebirth()
+{
+    auto now = std::chrono::steady_clock::now();
+    if (rebirthRequested && now - lastRebirthRequest < getRebirthRetryInterval())
+    {
+        return ParseResult::OK;
+    }
+    rebirthRequested = true;
+    lastRebirthRequest = now;
+    return ParseResult::OUT_OF_SYNC;
+}
+
+ParseResult Node::process(const SparkplugTopic &topic, const tahu::Payload *payload)
 {
     if (topic.isCommand())
     {
         return ParseResult::OK;
     }
 
-    if (topic.isBirth() && !topic.isDevice())
+    switch (topic.getCommandType())
     {
-        sequence = 0;
+    case SparkplugCommandType::NBIRTH:
+    {
+        sequence = payload->has_seq ? static_cast<uint8_t>(payload->seq + 1) : 1;
+        bdSeq = findBdSeq(payload);
+
+        // Devices must send a new DBIRTH after their node rebirths
+        DataCollection<Device>::each([](Device *device)
+                                     { device->markOffline(); });
+
+        if (Publishable::process(topic, payload) == ParseResult::OUT_OF_SYNC)
+        {
+            // Keep the throttle running so a node with a bad birth is not asked to rebirth on every birth
+            return requestRebirth();
+        }
+        rebirthRequested = false;
+        return ParseResult::OK;
+    }
+    case SparkplugCommandType::NDEATH:
+    {
+        auto deathBdSeq = findBdSeq(payload);
+        if (bdSeq && deathBdSeq && *bdSeq != *deathBdSeq)
+        {
+            SPH_LOG_INFO(COMPONENT, "Ignoring NDEATH for {} from an earlier session (bdSeq {}, current {})",
+                         name,
+                         *deathBdSeq,
+                         *bdSeq);
+            return ParseResult::OK;
+        }
+        markOffline();
+        return ParseResult::OK;
+    }
+    default:
+        break;
     }
 
-    if (payload->has_seq && sequence != payload->seq)
+    // NDATA, DBIRTH, DDATA and DDEATH all require an online node with a known sequence
+    if (!isOnline())
     {
-        LOGGER("Sequence mismatch for %s/%s. Expected %u. Received: %lu.\n",
-               topic.getGroup().c_str(),
-               topic.getNode().c_str(),
-               sequence, payload->seq);
-        return ParseResult::OUT_OF_SYNC;
+        SPH_LOG_INFO(COMPONENT, "Received a message for {} while it is offline", name);
+        return requestRebirth();
     }
 
-    sequence += 1;
+    bool outOfSync = false;
+
+    if (payload->has_seq)
+    {
+        if (payload->seq != sequence)
+        {
+            SPH_LOG_WARNING(COMPONENT, "Sequence mismatch for {}. Expected {}. Received: {}",
+                            name, sequence, payload->seq);
+            outOfSync = true;
+        }
+        // Resynchronise so one lost message does not flag every message after it
+        sequence = static_cast<uint8_t>(payload->seq + 1);
+    }
+
+    ParseResult result = ParseResult::OK;
 
     if (!topic.isDevice())
     {
-        ParseResult result = Publishable::process(topic, payload);
-        if (result == ParseResult::OUT_OF_SYNC)
-        {
-            // Rebirth;
-        }
-        return result;
+        result = Publishable::process(topic, payload);
     }
     else
     {
-        auto deviceSource = std::string(name + "/" + topic.getDevice());
-        auto device = DataCollection<Device>::get(deviceSource);
-        ParseResult result = device->process(topic, payload);
-        if (result == ParseResult::OUT_OF_SYNC)
+        std::string deviceName = name + "/" + topic.getDevice();
+        Device *device = topic.isBirth()
+                             ? DataCollection<Device>::get(deviceName)
+                             : DataCollection<Device>::find(deviceName);
+
+        if (device)
         {
-            // Rebirth;
+            result = device->process(topic, payload);
         }
-        return result;
+        else if (topic.isData())
+        {
+            SPH_LOG_INFO(COMPONENT, "Received data for unknown device {}", deviceName);
+            result = ParseResult::OUT_OF_SYNC;
+        }
     }
+
+    if (outOfSync || result == ParseResult::OUT_OF_SYNC)
+    {
+        return requestRebirth();
+    }
+
+    return ParseResult::OK;
 }
 
 void Node::appendTo(std::vector<PublishableUpdate> &payloads, bool force)
@@ -92,7 +185,15 @@ void Node::appendTo(std::vector<PublishableUpdate> &payloads, bool force)
                                  { device->appendTo(payloads, force); });
 }
 
-inline bool Node::isDevice()
+void Node::markOffline()
+{
+    Publishable::markOffline();
+    rebirthRequested = false;
+    DataCollection<Device>::each([](Device *device)
+                                 { device->markOffline(); });
+}
+
+bool Node::isDevice() const
 {
     return false;
 }

@@ -32,19 +32,39 @@
 #include "Property.h"
 #include "PropertySet.h"
 #include <pb_decode.h>
+#include <cstring>
 
-using namespace std;
+namespace
+{
+    bool isStringType(uint32_t type)
+    {
+        return type == PROPERTY_DATA_TYPE_STRING || type == PROPERTY_DATA_TYPE_TEXT;
+    }
+}
 
-void Property::appendTo(tahu::PropertySet *propertySet, bool force)
+Property::Property(const std::string &name) : name(name)
+{
+}
+
+Property::~Property() = default;
+
+void Property::appendTo(tahu::PropertySet *propertySet, bool force, bool consume)
 {
     if (!dirty && !force)
     {
         return;
     }
 
-    if (!force)
+    if (consume)
     {
         dirty = false;
+    }
+
+    if (isNull || type == PROPERTY_DATA_TYPE_UNKNOWN)
+    {
+        // A null value makes add_property_to_set flag the property as is_null
+        add_property_to_set(propertySet, name.c_str(), type, nullptr, 0);
+        return;
     }
 
     if (type == PROPERTY_DATA_TYPE_PROPERTYSET)
@@ -52,134 +72,109 @@ void Property::appendTo(tahu::PropertySet *propertySet, bool force)
         tahu::PropertySet nestedSet;
         memset(&nestedSet, 0, sizeof(tahu::PropertySet));
 
-        value.propertySetValue->appendTo(&nestedSet, force);
+        propertySetValue->appendTo(&nestedSet, true, consume);
         add_property_to_set(propertySet, name.c_str(), type, &nestedSet, 0);
 
-        // We're allocating memory during appendTo, and the data is duplicated from
-        // the nestedSet to the propertySet. Because of this we must release the nestedSet
+        // add_property_to_set deep copies the nested set, so our copy must be released
         pb_release(org_eclipse_tahu_protobuf_Payload_PropertySet_fields, &nestedSet);
+    }
+    else if (isStringType(type))
+    {
+        add_property_to_set(propertySet, name.c_str(), type, stringValue.c_str(), stringValue.size());
     }
     else
     {
-        if (type == PROPERTY_DATA_TYPE_TEXT || type == PROPERTY_DATA_TYPE_STRING)
-        {
-            add_property_to_set(propertySet, name.c_str(), type, value.stringValue, length);
-        }
-        else
-        {
-            add_property_to_set(propertySet, name.c_str(), type, &value, length);
-        }
+        add_property_to_set(propertySet, name.c_str(), type, &value, 0);
     }
 }
 
-inline void Property::clearValue()
+ParseResult Property::process(const tahu::Property *property)
 {
-    switch (type)
-    {
-    case PROPERTY_DATA_TYPE_STRING:
-    case PROPERTY_DATA_TYPE_TEXT:
-        if (value.stringValue)
-        {
-            free(value.stringValue);
-        }
-        break;
-    case PROPERTY_DATA_TYPE_PROPERTYSET:
-        delete value.propertySetValue;
-        break;
-    default:
-        break;
-    }
-    memset(&value, 0, sizeof(PropertyValueUnion));
-}
+    uint32_t incomingType = property->has_type ? property->type : type;
 
-ParseResult Property::process(tahu::Property *property)
-{
-    if (property->type != type && type != PROPERTY_DATA_TYPE_UNKNOWN)
+    if (incomingType != type && type != PROPERTY_DATA_TYPE_UNKNOWN)
     {
         return ParseResult::OUT_OF_SYNC;
     }
 
     dirty = true;
+    type = incomingType;
+    value = {};
+    isNull = property->has_is_null && property->is_null;
 
-    switch (property->type)
+    if (isNull)
+    {
+        stringValue.clear();
+        propertySetValue.reset();
+        return ParseResult::OK;
+    }
+
+    switch (type)
     {
     case PROPERTY_DATA_TYPE_INT8:
     case PROPERTY_DATA_TYPE_UINT8:
-        length = sizeof(int8_t);
-        value.intValue = property->value.int_value;
-        break;
     case PROPERTY_DATA_TYPE_INT16:
     case PROPERTY_DATA_TYPE_UINT16:
-        length = sizeof(int16_t);
+    case PROPERTY_DATA_TYPE_INT32:
         value.intValue = property->value.int_value;
         break;
-    case PROPERTY_DATA_TYPE_INT32:
     case PROPERTY_DATA_TYPE_UINT32:
-        length = sizeof(int32_t);
-        value.intValue = property->value.int_value;
+        // UInt32 properties are carried in long_value by Tahu, but accept either
+        value.longValue = property->which_value == org_eclipse_tahu_protobuf_Payload_PropertyValue_int_value_tag
+                              ? property->value.int_value
+                              : property->value.long_value;
         break;
     case PROPERTY_DATA_TYPE_INT64:
     case PROPERTY_DATA_TYPE_UINT64:
     case PROPERTY_DATA_TYPE_DATETIME:
-        length = sizeof(int64_t);
         value.longValue = property->value.long_value;
         break;
     case PROPERTY_DATA_TYPE_FLOAT:
-        length = sizeof(float);
         value.floatValue = property->value.float_value;
         break;
     case PROPERTY_DATA_TYPE_DOUBLE:
-        length = sizeof(double);
         value.doubleValue = property->value.double_value;
         break;
     case PROPERTY_DATA_TYPE_BOOLEAN:
-        length = sizeof(bool);
         value.booleanValue = property->value.boolean_value;
         break;
     case PROPERTY_DATA_TYPE_STRING:
     case PROPERTY_DATA_TYPE_TEXT:
-        if (value.stringValue)
+        if (property->value.string_value)
         {
-            free(value.stringValue);
+            stringValue = property->value.string_value;
         }
-        length = strlen(property->value.string_value) + 1;
-        value.stringValue = strdup(property->value.string_value);
+        else
+        {
+            stringValue.clear();
+            isNull = true;
+        }
         break;
     case PROPERTY_DATA_TYPE_PROPERTYSET:
-        if (!value.propertySetValue)
+        if (!propertySetValue)
         {
-            value.propertySetValue = new PropertySet();
+            propertySetValue = std::make_unique<PropertySet>();
         }
-        value.propertySetValue->process(&property->value.propertyset_value);
-        length = sizeof(PropertySet);
-        break;
+        return propertySetValue->process(&property->value.propertyset_value);
     default:
+        // Property set lists and unknown types are not supported
+        isNull = true;
         break;
     }
-
-    type = property->type;
 
     return ParseResult::OK;
 }
 
-bool Property::isDirty()
+bool Property::isDirty() const
 {
     return dirty;
 }
 
 void Property::clear()
 {
-    clearValue();
     type = PROPERTY_DATA_TYPE_UNKNOWN;
-}
-
-Property::Property(string &name)
-{
-    clearValue();
-    this->name = string(name);
-}
-
-Property::~Property()
-{
-    clear();
+    value = {};
+    isNull = true;
+    stringValue.clear();
+    propertySetValue.reset();
 }

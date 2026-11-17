@@ -35,21 +35,20 @@
 #include "Publishable.h"
 #include <string>
 
+/**
+ * @brief A Sparkplug Device attached to a Node. Its id is "group/node/device".
+ *
+ */
 class Device : public Publishable
 {
-
-private:
-protected:
 public:
-    Device(){};
-    Device(std::string name) : Publishable(name){};
+    explicit Device(const std::string &name) : Publishable(name) {}
     /**
      * @brief Returns true as it is a Device
      *
      * @return true
-     * @return false
      */
-    virtual bool isDevice() override;
+    bool isDevice() const override;
 };
 
 #endif /* SRC_TYPES_DEVICE */

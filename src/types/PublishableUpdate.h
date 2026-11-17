@@ -35,27 +35,37 @@
 #include "TahuTypes.h"
 #include <string>
 
+/**
+ * @brief The kind of change a PublishableUpdate describes.
+ *
+ */
 enum class UpdateType
 {
+    /** Some metrics changed. The payload holds only the changed metrics. */
     PUBLISH = 0,
+    /** The node or device went offline. There is no payload. */
     DEATH,
+    /** The node or device came online, or a full snapshot was requested. The payload holds every metric. */
     BIRTH
 };
 
 /**
- * @brief A class to represent an update to a Sparkplug entity.
- * Holds a payload along with the update type (Birth, Death, Data)
+ * @brief A change to a Sparkplug Node or Device, as returned by SparkplugHost::getPayloads().
+ *
+ * The update owns its payload, which is released when the update is destroyed.
+ * Updates are move-only. Do not call free_payload() or free() on the payload yourself.
  */
 class PublishableUpdate
 {
-private:
-protected:
 public:
-    tahu::Payload *payload = nullptr;
+    /** Metrics for BIRTH and PUBLISH updates. Null for DEATH updates. */
+    tahu::PayloadPtr payload;
+    /** "group/node" for nodes, "group/node/device" for devices. */
     std::string id;
-    UpdateType type;
-    PublishableUpdate() : payload(nullptr), type(UpdateType::DEATH){};
-    PublishableUpdate(tahu::Payload *, std::string, UpdateType);
+    UpdateType type = UpdateType::DEATH;
+
+    PublishableUpdate() = default;
+    PublishableUpdate(tahu::PayloadPtr payload, std::string id, UpdateType type);
 };
 
 #endif /* SRC_TYPES_PUBLISHABLEUPDATE */

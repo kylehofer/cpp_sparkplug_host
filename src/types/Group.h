@@ -32,14 +32,14 @@
 #ifndef SRC_TYPES_GROUP
 #define SRC_TYPES_GROUP
 
-#include <map>
 #include <string>
+#include <vector>
 #include "Node.h"
 #include "PublishableUpdate.h"
 #include "../DataCollection.h"
 
 /**
- * @brief A class for managing all Nodes on a Group
+ * @brief All Nodes seen on a Sparkplug Group
  *
  */
 class Group : public DataCollection<Node>
@@ -47,26 +47,28 @@ class Group : public DataCollection<Node>
 private:
     std::string name;
 
-protected:
 public:
-    Group() {};
-    Group(std::string name) : name(name) {};
-    ~Group() {};
+    explicit Group(const std::string &name) : name(name) {}
     /**
-     * @brief Processes a Payload for a Node/Device on a group
+     * @brief Processes a Payload for a Node or Device on this group
      *
      * @param topic
      * @param payload
-     * @return ParseResult
+     * @return ParseResult OUT_OF_SYNC if a rebirth should be requested for the node
      */
-    ParseResult process(SparkplugTopic &topic, tahu::Payload *payload);
+    ParseResult process(const SparkplugTopic &topic, const tahu::Payload *payload);
     /**
-     * @brief Appends any payloads from Nodes/Devices on this Group
+     * @brief Appends updates from every Node and Device on this Group
      *
      * @param payloads
-     * @param force Forces all payloads to be appended
+     * @param force Return a full snapshot rather than changes
      */
     void appendTo(std::vector<PublishableUpdate> &payloads, bool force = false);
+    /**
+     * @brief Marks every Node and Device on this Group as offline
+     *
+     */
+    void markOffline();
 };
 
 #endif /* SRC_TYPES_GROUP */

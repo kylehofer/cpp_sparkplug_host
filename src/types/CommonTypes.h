@@ -32,10 +32,17 @@
 #ifndef SRC_TYPES_COMMONTYPES
 #define SRC_TYPES_COMMONTYPES
 
+/**
+ * @brief Outcome of processing a Sparkplug message.
+ *
+ */
 enum class ParseResult
 {
+    /** The message was applied (or deliberately ignored) and no action is needed. */
     OK,
+    /** The host's view of the node is out of date. A rebirth should be requested. */
     OUT_OF_SYNC,
+    /** Reserved. Not currently returned. */
     DO_NOTHING
 };
 

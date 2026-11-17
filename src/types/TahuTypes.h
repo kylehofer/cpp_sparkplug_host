@@ -33,9 +33,14 @@
 #define SRC_TYPES_TAHUTYPES
 
 #include "tahu.h"
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
 /**
- * @brief References Tahu types to an easier to read format
+ * @brief Shorter aliases for the nanopb generated Tahu types.
  *
  */
 namespace tahu
@@ -49,9 +54,53 @@ namespace tahu
     typedef org_eclipse_tahu_protobuf_Payload_DataSet DataSet;
     typedef org_eclipse_tahu_protobuf_Payload_Template Template;
     typedef org_eclipse_tahu_protobuf_Payload_Metric_MetricValueExtension MetricValueExtension;
-}
 
-bool appendPayload(tahu::Payload *base, tahu::Payload *input, bool isBirth);
-tahu::Metric *findMetric(tahu::Payload *base, char *name);
+    /**
+     * @brief Deleter that releases a heap allocated Payload and everything it owns.
+     * Calls free_payload() followed by free().
+     */
+    struct PayloadDeleter
+    {
+        void operator()(Payload *payload) const;
+    };
+
+    /**
+     * @brief Owning pointer to a Tahu Payload.
+     * The Payload must have been allocated with malloc/calloc (see makePayload()).
+     */
+    using PayloadPtr = std::unique_ptr<Payload, PayloadDeleter>;
+
+    /**
+     * @brief Allocates a zero initialised Payload.
+     *
+     * @return PayloadPtr An owned, empty payload
+     */
+    PayloadPtr makePayload();
+
+    /**
+     * @brief Encodes a payload into a buffer sized to fit it.
+     *
+     * @param payload The payload to encode
+     * @return std::optional<std::vector<uint8_t>> The encoded bytes, or std::nullopt if encoding failed
+     */
+    std::optional<std::vector<uint8_t>> encode(const Payload *payload);
+
+    /**
+     * @brief Decodes a payload from a buffer.
+     *
+     * @param data Encoded protobuf bytes
+     * @param length Number of bytes in data
+     * @return PayloadPtr The decoded payload, or nullptr if decoding failed
+     */
+    PayloadPtr decode(const uint8_t *data, size_t length);
+
+    /**
+     * @brief Reads an unsigned integer value out of a metric, whatever integer type it was sent as.
+     *
+     * @param metric
+     * @return std::optional<uint64_t> The value, or std::nullopt if the metric is null or not an integer
+     */
+    std::optional<uint64_t> readUnsigned(const Metric *metric);
+}
 
 #endif /* SRC_TYPES_TAHUTYPES */

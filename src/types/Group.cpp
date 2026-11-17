@@ -30,26 +30,20 @@
  */
 
 #include "Group.h"
-#include <functional> //for std::hash
 
-#define DEBUGGING 1
-#ifdef DEBUGGING
-#define LOGGER(format, ...) \
-    printf("Group: ");      \
-    printf(format, ##__VA_ARGS__)
-#else
-#define LOGGER(out, ...)
-#endif
-
-ParseResult Group::process(SparkplugTopic &topic, tahu::Payload *payload)
+ParseResult Group::process(const SparkplugTopic &topic, const tahu::Payload *payload)
 {
-    auto nodeSource = std::string(topic.getGroup() + "/" + topic.getNode());
-    auto node = get(nodeSource);
-    return node->process(topic, payload);
+    return get(topic.getGroup() + "/" + topic.getNode())->process(topic, payload);
 }
 
 void Group::appendTo(std::vector<PublishableUpdate> &payloads, bool force)
 {
     each([&payloads, force](Node *node)
          { node->appendTo(payloads, force); });
+}
+
+void Group::markOffline()
+{
+    each([](Node *node)
+         { node->markOffline(); });
 }
