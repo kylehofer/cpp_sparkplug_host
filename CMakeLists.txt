@@ -45,7 +45,7 @@ ENDIF()
 CPMAddPackage(
     paho_mqtt_cpp
     GIT_REPOSITORY https://github.com/eclipse/paho.mqtt.cpp.git
-    GIT_TAG v1.3.2
+    GIT_TAG v1.5.3
     OPTIONS
     "PAHO_BUILD_STATIC ${CPP_SPARKPLUG_HOST_STATIC}"
     "PAHO_BUILD_SHARED ${CPP_SPARKPLUG_HOST_SHARED}"
@@ -59,13 +59,16 @@ CPMAddPackage(
     "CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE}"
 )
 
-target_include_directories(cpp_sparkplug_host PUBLIC "${paho_mqtt_cpp_SOURCE_DIR}/src")
+target_include_directories(cpp_sparkplug_host PUBLIC
+    "${paho.mqtt.cpp_SOURCE_DIR}/include"
+    "${Eclipse\ Paho\ C_SOURCE_DIR}/src"
+)
 
 # Linking libraries
 target_link_libraries(
     cpp_sparkplug_host
     pico_tahu
-    paho-mqttpp3
+    paho-mqttpp3-shared
 )
 
 set_target_properties(cpp_sparkplug_host PROPERTIES PUBLIC_HEADER "${HEADERS}")

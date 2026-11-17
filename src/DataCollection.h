@@ -36,6 +36,7 @@
 #include <string>
 #include <map>
 #include <functional>
+#include <algorithm>
 
 /**
  * @brief Adds a collection of objects to a class that can be accessed by unique names
@@ -56,7 +57,7 @@ protected:
      */
     void each(std::function<void(T *)> callback)
     {
-        for_each(
+        std::for_each(
             items.begin(),
             items.end(),
             [callback](std::pair<const long unsigned int, T *> item)
@@ -74,7 +75,7 @@ protected:
      */
     bool any(std::function<bool(T *)> callback)
     {
-        return any_of(
+        return std::any_of(
             items.begin(),
             items.end(),
             [callback](std::pair<const long unsigned int, T *> item)

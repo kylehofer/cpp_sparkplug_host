@@ -46,8 +46,8 @@ using namespace std;
 struct SparkplugMessage
 {
 public:
-    SparkplugMessage(){};
-    SparkplugMessage(string topic, tahu::Payload *payload) : topic(topic), payload(payload){};
+    SparkplugMessage() {};
+    SparkplugMessage(string topic, tahu::Payload *payload) : topic(topic), payload(payload) {};
     string topic;
     tahu::Payload *payload;
 };
@@ -61,20 +61,24 @@ class SparkplugReceiver : mqtt::iaction_listener
 private:
     mqtt::will_options will;
     mqtt::connect_options connectionOptions;
+    std::string address;
+    std::string clientId;
     mqtt::async_client client;
     std::string hostId;
     std::string username;
     std::string password;
-    bool useSsl = false;
+    bool useSsl;
     std::string hostIdTopic;
     std::string hostIdOffline;
     std::string hostIdOnline;
     uint64_t connectTime = 0;
     mqtt::ssl_options sslOptions;
     const mqtt::subscribe_options SUBSCRIBE_OPTIONS = mqtt::subscribe_options(
-        mqtt::subscribe_options::SUBSCRIBE_NO_LOCAL,
+        mqtt::subscribe_options::NO_LOCAL,
         false,
         mqtt::subscribe_options::DONT_SEND_RETAINED);
+
+    mqtt::async_client configureClient();
 
 protected:
 public:

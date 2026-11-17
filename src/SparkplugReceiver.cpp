@@ -49,29 +49,21 @@ using namespace std::chrono;
 
 using namespace std;
 const string SPARKPLUG_ID{"spBv1.0"};
+
 const string SPARKPLUG_TOPIC{SPARKPLUG_ID + "/#"};
 
 const int QOS = 0;
 
 const mqtt::create_options createOptions(MQTTVERSION_5);
 
-SparkplugReceiver::SparkplugReceiver(string address) : client(address, "", createOptions)
+SparkplugReceiver::SparkplugReceiver(string address) : address(address), clientId(""), client(configureClient())
 {
-    if (address.find("ssl://") != std::string::npos)
-    {
-        useSsl = true;
-    }
 }
-SparkplugReceiver::SparkplugReceiver(string address, string clientId) : client(address, clientId, createOptions)
+SparkplugReceiver::SparkplugReceiver(string address, string clientId) : address(address), clientId(clientId), client(configureClient())
 {
-    LOGGER("Configured to connect to %s.\n", address.c_str());
-    if (address.find("ssl://") != std::string::npos)
-    {
-        useSsl = true;
-    }
 }
 
-SparkplugReceiver::SparkplugReceiver(string address, string clientId, string hostId) : client(address, clientId, createOptions), hostId(hostId)
+SparkplugReceiver::SparkplugReceiver(string address, string clientId, string hostId) : address(address), clientId(clientId), client(configureClient()), hostId(hostId)
 {
 }
 
@@ -84,6 +76,21 @@ SparkplugReceiver::~SparkplugReceiver()
     {
         client.disconnect();
     }
+}
+
+mqtt::async_client SparkplugReceiver::configureClient()
+{
+    LOGGER("Configured to connect to %s.\n", address.c_str());
+    if (address.find("ssl://") != std::string::npos)
+    {
+        LOGGER("Enabling SSL.\n");
+        useSsl = true;
+    }
+    else
+    {
+        useSsl = false;
+    }
+    return mqtt::async_client(address, clientId, createOptions);
 }
 
 int SparkplugReceiver::activate()
@@ -105,11 +112,13 @@ int SparkplugReceiver::configure()
 
     if (useSsl)
     {
+        LOGGER("Adding sslOptions.\n");
         connectionBuilder.ssl(sslOptions);
     }
 
     if (!username.empty())
     {
+        LOGGER("Connecting with the username: %s.\n", username.c_str());
         connectionBuilder.user_name(username);
     }
 
@@ -120,6 +129,7 @@ int SparkplugReceiver::configure()
 
     if (!hostId.empty())
     {
+        LOGGER("Configuring with the Host ID: %s.\n", hostId.c_str());
         connectTime = get_current_timestamp();
         hostIdTopic = {SPARKPLUG_ID + "/STATE/" + hostId};
 
