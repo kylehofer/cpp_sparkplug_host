@@ -33,21 +33,25 @@
 #define SRC_DATACOLLECTION
 
 #include "types/CommonTypes.h"
-#include <string>
-#include <map>
-#include <functional>
 #include <algorithm>
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
 
 /**
- * @brief Adds a collection of objects to a class that can be accessed by unique names
+ * @brief An owning collection of objects that are looked up by a unique name.
  *
- * @tparam T
+ * Items are created on demand by get() and destroyed by clear() or when the collection is destroyed.
+ * The collection is not copyable, since it owns its items.
+ *
+ * @tparam T The item type. Must be constructible from a const std::string &.
  */
 template <class T>
 class DataCollection
 {
 private:
-    std::map<std::size_t, T *> items;
+    std::map<std::string, std::unique_ptr<T>> items;
 
 protected:
     /**
@@ -55,16 +59,13 @@ protected:
      *
      * @param callback
      */
-    void each(std::function<void(T *)> callback)
+    void each(const std::function<void(T *)> &callback)
     {
-        std::for_each(
-            items.begin(),
-            items.end(),
-            [callback](std::pair<const long unsigned int, T *> item)
-            {
-                callback(item.second);
-            });
-    };
+        for (auto &item : items)
+        {
+            callback(item.second.get());
+        }
+    }
 
     /**
      * @brief Check if any of the items in the collection match a condition
@@ -73,13 +74,13 @@ protected:
      * @return true
      * @return false
      */
-    bool any(std::function<bool(T *)> callback)
+    bool any(const std::function<bool(T *)> &callback)
     {
         return std::any_of(
             items.begin(),
             items.end(),
-            [callback](std::pair<const long unsigned int, T *> item)
-            { return callback(item.second); });
+            [&callback](const auto &item)
+            { return callback(item.second.get()); });
     }
 
     /**
@@ -87,62 +88,55 @@ protected:
      *
      * @return size_t
      */
-    size_t size()
+    size_t size() const
     {
         return items.size();
     }
 
 public:
+    DataCollection() = default;
+    DataCollection(const DataCollection &) = delete;
+    DataCollection &operator=(const DataCollection &) = delete;
+
     /**
-     * @brief Gets
+     * @brief Gets the item in the collection that matches the name.
+     * If no item exists a new one will be constructed using the name.
      *
      * @param name
-     * @return T*
+     * @return T* Never null. Owned by the collection.
      */
-    T *get(std::string &name)
+    T *get(const std::string &name)
     {
-        std::hash<std::string> hasher;
-        auto key = hasher(name);
-        if (!items.contains(key))
+        auto &item = items[name];
+        if (!item)
         {
-            items[key] = new T(name);
+            item = std::make_unique<T>(name);
         }
-
-        return items[key];
+        return item.get();
     }
 
     /**
-     * @brief Gets the item in the collection that matches the name
-     * If no item exists a new one will be constructed using the name
+     * @brief Gets the item in the collection that matches the name, without creating it.
      *
      * @param name
-     * @return T*
+     * @return T* The item, or nullptr if it does not exist. Owned by the collection.
      */
-    T *get(const char *name)
+    T *find(const std::string &name)
     {
-        std::string input(name);
-        return get(input);
+        auto item = items.find(name);
+        return item == items.end() ? nullptr : item->second.get();
     }
 
     /**
-     * @brief Empties the collection of items
+     * @brief Empties the collection, destroying every item
      *
      */
     void clear()
     {
-        each([](T *item)
-             { delete item; });
         items.clear();
     }
 
-    /**
-     * @brief Destroy the Data Collection object
-     *
-     */
-    virtual ~DataCollection()
-    {
-        clear();
-    }
+    virtual ~DataCollection() = default;
 };
 
 #endif /* SRC_DATACOLLECTION */

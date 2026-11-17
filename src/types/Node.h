@@ -35,44 +35,71 @@
 #include "Publishable.h"
 #include "Device.h"
 #include "../DataCollection.h"
-#include <map>
+#include <chrono>
+#include <cstdint>
+#include <optional>
 #include <string>
 
-class Node : public Publishable, DataCollection<Device>
+/**
+ * @brief A Sparkplug Edge Node and its Devices. Its id is "group/node".
+ *
+ * Validates sequence numbers across all node and device messages, tracks the birth/death
+ * sequence (bdSeq) so stale deaths are ignored, and throttles rebirth requests.
+ */
+class Node : public Publishable, private DataCollection<Device>
 {
-
 private:
     uint8_t sequence = 0;
+    std::optional<uint64_t> bdSeq;
+    bool rebirthRequested = false;
+    std::chrono::steady_clock::time_point lastRebirthRequest;
 
-protected:
-public:
-    Node() {};
-    Node(std::string name) : Publishable(name) {};
     /**
-     * @brief Processes a Payload that has come from a topic
-     * Will validate the sequence and sparkplug payload.
-     * If the payload is for a device of the Node, it will be passed through.
+     * @brief Decides whether a rebirth should be sent now.
+     * Only one request is sent per retry interval until an NBIRTH arrives.
+     *
+     * @return ParseResult OUT_OF_SYNC if a rebirth should be sent, otherwise OK
+     */
+    ParseResult requestRebirth();
+
+public:
+    explicit Node(const std::string &name);
+
+    /**
+     * @brief Sets how long to wait for an NBIRTH before requesting another rebirth. Defaults to 5 seconds.
+     *
+     * @param interval
+     */
+    static void setRebirthRetryInterval(std::chrono::milliseconds interval);
+    static std::chrono::milliseconds getRebirthRetryInterval();
+
+    /**
+     * @brief Processes a payload sent by this Node or one of its Devices.
+     * Validates the sequence number and passes device messages to the Device.
      *
      * @param topic
      * @param payload
-     * @return ParseResult
+     * @return ParseResult OUT_OF_SYNC if a rebirth should be requested now
      */
-    ParseResult process(SparkplugTopic &topic, tahu::Payload *payload);
+    ParseResult process(const SparkplugTopic &topic, const tahu::Payload *payload);
     /**
-     * @brief Appends the Node's and Device's payloads if it they changes
+     * @brief Appends the Node's update followed by its Devices' updates
      *
      * @param payloads
      * @param force
      */
     void appendTo(std::vector<PublishableUpdate> &payloads, bool force = false);
     /**
+     * @brief Marks the Node and all of its Devices as offline
+     *
+     */
+    void markOffline() override;
+    /**
      * @brief Returns false as the Node is not a device
      *
-     * @return true
      * @return false
      */
-    virtual bool isDevice() override;
-    bool isDirty();
+    bool isDevice() const override;
 };
 
 #endif /* SRC_TYPES_NODE */

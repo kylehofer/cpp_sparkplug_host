@@ -31,87 +31,32 @@
 
 #include "SparkplugHost.h"
 #include "SparkplugReceiver.h"
+#include "utilities/LogMacros.h"
 #include "utilities/SparkplugTopic.h"
-#include "types/PublishableUpdate.h"
-#include <thread>
-#include <chrono>
 #include <set>
+#include <thread>
 
-const string delimiter{"/"};
-const string SPARKPLUG_ID{"spBv1.0"};
-
-#define DEBUGGING 1
-#ifdef DEBUGGING
-#define LOGGER(format, ...)    \
-    printf("SparkplugHost: "); \
-    printf(format, ##__VA_ARGS__)
-#else
-#define LOGGER(out, ...)
-#endif
-
-int SparkplugHost::run()
+namespace
 {
-    running = true;
+    const char *const COMPONENT = "SparkplugHost";
+    const std::string SPARKPLUG_ID{"spBv1.0"};
+    const auto RECEIVE_WAIT = std::chrono::milliseconds(100);
+    const auto ERROR_BACKOFF = std::chrono::milliseconds(500);
+    // Upper bound on messages handled per iteration, so commands and stop() are not starved
+    const size_t MAX_MESSAGES_PER_ITERATION = 1000;
 
-    while (running)
+    std::string nodeCommandTopic(const std::string &group, const std::string &node)
     {
-        SparkplugMessage message;
-        SparkplugTopic topic;
-        set<string> rebirths;
-
-        {
-            lock_guard<mutex> guard(receiverLock);
-
-            SparkplugReceiver *receiver = getReceiver();
-
-            while (receiver->consume(message))
-            {
-                if (topic.parse(message.topic))
-                {
-                    ParseResult result;
-                    {
-                        lock_guard<mutex> guard(payloadLock);
-                        result = process(topic, message.payload);
-                    }
-                    if (result == ParseResult::OUT_OF_SYNC)
-                    {
-                        LOGGER("Receieved a message out of sync\n");
-                        string rebirthTopic(SPARKPLUG_ID + "/" + topic.getGroup() + "/NCMD/" + topic.getNode());
-                        rebirths.insert(rebirthTopic);
-                    }
-                    free_payload(message.payload);
-                    free(message.payload);
-                }
-            }
-
-            for (auto item = rebirths.begin(); item != rebirths.end(); ++item)
-            {
-                receiver->rebirth(*item);
-            }
-
-            {
-                lock_guard<mutex> guard(commandLock);
-
-                while (commands.size() > 0)
-                {
-                    auto command = commands.back();
-                    commands.pop_back();
-
-                    receiver->command(command);
-
-                    free_payload(command.payload);
-                    free(command.payload);
-                }
-            }
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        return SPARKPLUG_ID + "/" + group + "/NCMD/" + node;
     }
-
-    return 0;
 }
 
-void SparkplugHost::stop()
+SparkplugHost::SparkplugHost(std::string server, std::string clientId, std::string hostId)
+    : server(std::move(server)), clientId(std::move(clientId)), hostId(std::move(hostId))
+{
+}
+
+SparkplugHost::~SparkplugHost()
 {
     running = false;
     if (receiver)
@@ -120,76 +65,201 @@ void SparkplugHost::stop()
     }
 }
 
-ParseResult SparkplugHost::process(SparkplugTopic &topic, tahu::Payload *payload)
+int SparkplugHost::run()
 {
-    auto group = get(topic.getGroup());
-    return group->process(topic, payload);
-}
+    running = true;
+    bool wasConnected = false;
 
-SparkplugReceiver *SparkplugHost::getReceiver()
-{
-    if (!receiver)
+    while (running)
     {
-        buildReceiver();
+        try
+        {
+            loop(wasConnected);
+        }
+        catch (const std::exception &error)
+        {
+            SPH_LOG_ERROR(COMPONENT, "Unexpected error in the control loop: {}", error.what());
+            std::this_thread::sleep_for(ERROR_BACKOFF);
+        }
     }
 
-    return receiver.get();
+    if (receiver)
+    {
+        receiver->stop();
+        receiver.reset();
+    }
+    connected = false;
+    markAllOffline();
+
+    return 0;
+}
+
+void SparkplugHost::loop(bool &wasConnected)
+{
+    {
+        std::lock_guard<std::mutex> guard(configLock);
+        if (!receiver || reconfigure)
+        {
+            reconfigure = false;
+            buildReceiver();
+            wasConnected = false;
+        }
+    }
+
+    bool isNowConnected = receiver->isConnected();
+    if (wasConnected && !isNowConnected)
+    {
+        // Sparkplug: a host that loses its connection can no longer vouch for any edge node
+        SPH_LOG_WARNING(COMPONENT, "Lost connection to the broker. Marking all nodes offline.");
+        markAllOffline();
+    }
+    wasConnected = isNowConnected;
+    connected = isNowConnected;
+
+    std::set<std::string> rebirths;
+    SparkplugMessage message;
+    SparkplugTopic topic;
+    size_t processed = 0;
+
+    // Wait for the first message, then drain whatever else is queued
+    auto wait = RECEIVE_WAIT;
+    while (processed < MAX_MESSAGES_PER_ITERATION && receiver->consume(message, wait))
+    {
+        wait = std::chrono::milliseconds(0);
+        processed++;
+
+        if (!topic.parse(message.topic))
+        {
+            continue;
+        }
+
+        ParseResult result;
+        {
+            std::lock_guard<std::mutex> guard(payloadLock);
+            result = process(topic, message.payload.get());
+        }
+
+        if (result == ParseResult::OUT_OF_SYNC)
+        {
+            rebirths.insert(nodeCommandTopic(topic.getGroup(), topic.getNode()));
+        }
+    }
+
+    for (const auto &rebirthTopic : rebirths)
+    {
+        receiver->rebirth(rebirthTopic);
+    }
+
+    if (!receiver->isConnected())
+    {
+        return;
+    }
+
+    std::deque<SparkplugMessage> pending;
+    {
+        std::lock_guard<std::mutex> guard(commandLock);
+        pending.swap(commands);
+    }
+
+    for (auto &command : pending)
+    {
+        if (!receiver->command(command))
+        {
+            SPH_LOG_WARNING(COMPONENT, "Dropped a command for {}", command.topic);
+        }
+    }
+}
+
+void SparkplugHost::stop()
+{
+    running = false;
+}
+
+ParseResult SparkplugHost::process(const SparkplugTopic &topic, const tahu::Payload *payload)
+{
+    return get(topic.getGroup())->process(topic, payload);
 }
 
 void SparkplugHost::buildReceiver()
 {
     {
-        lock_guard<mutex> guard(payloadLock);
+        std::lock_guard<std::mutex> guard(payloadLock);
         clear();
     }
 
     if (receiver)
     {
         receiver->stop();
+        receiver.reset();
     }
 
-    receiver.reset(new SparkplugReceiver(server, clientId, hostId));
+    receiver = std::make_unique<SparkplugReceiver>(server, clientId, hostId);
     receiver->credentials(username, password);
     receiver->configure();
     receiver->activate();
 }
 
-vector<PublishableUpdate> SparkplugHost::getPayloads(bool force)
+void SparkplugHost::markAllOffline()
 {
-    vector<PublishableUpdate> payloads;
-    {
-        lock_guard<mutex> guard(payloadLock);
-        each([&payloads, force](Group *group)
-             { group->appendTo(payloads, force); });
-    }
+    std::lock_guard<std::mutex> guard(payloadLock);
+    each([](Group *group)
+         { group->markOffline(); });
+}
+
+std::vector<PublishableUpdate> SparkplugHost::getPayloads(bool force)
+{
+    std::vector<PublishableUpdate> payloads;
+    std::lock_guard<std::mutex> guard(payloadLock);
+    each([&payloads, force](Group *group)
+         { group->appendTo(payloads, force); });
     return payloads;
 }
 
 void SparkplugHost::command(SparkplugMessage message)
 {
-    lock_guard<mutex> guard(commandLock);
-    commands.push_back(message);
+    std::lock_guard<std::mutex> guard(commandLock);
+    commands.push_back(std::move(message));
+}
+
+void SparkplugHost::commandNode(const std::string &group, const std::string &node, tahu::PayloadPtr payload)
+{
+    command(SparkplugMessage(nodeCommandTopic(group, node), std::move(payload)));
+}
+
+void SparkplugHost::commandDevice(const std::string &group, const std::string &node, const std::string &device, tahu::PayloadPtr payload)
+{
+    command(SparkplugMessage(SPARKPLUG_ID + "/" + group + "/DCMD/" + node + "/" + device, std::move(payload)));
+}
+
+void SparkplugHost::requestRebirth(const std::string &group, const std::string &node)
+{
+    tahu::PayloadPtr payload = tahu::makePayload();
+    bool value = true;
+    add_simple_metric(payload.get(), "Node Control/Rebirth", false, 0, METRIC_DATA_TYPE_BOOLEAN, false, false, &value, sizeof(value));
+    commandNode(group, node, std::move(payload));
 }
 
 void SparkplugHost::configure(std::string address)
 {
-    lock_guard<mutex> guard(receiverLock);
-    this->server = address;
-    buildReceiver();
-}
-
-SparkplugHost::SparkplugHost(std::string server, std::string clientId) : server(server), clientId(clientId)
-{
-}
-
-SparkplugHost::SparkplugHost(std::string server, std::string clientId, std::string hostId) : server(server), clientId(clientId), hostId(hostId)
-{
+    std::lock_guard<std::mutex> guard(configLock);
+    server = std::move(address);
+    reconfigure = true;
 }
 
 void SparkplugHost::credentials(std::string username, std::string password)
 {
-    lock_guard<mutex> guard(receiverLock);
-    this->username = username;
-    this->password = password;
-    buildReceiver();
+    std::lock_guard<std::mutex> guard(configLock);
+    this->username = std::move(username);
+    this->password = std::move(password);
+    reconfigure = true;
+}
+
+bool SparkplugHost::isConnected() const
+{
+    return connected;
+}
+
+void SparkplugHost::setRebirthRetryInterval(std::chrono::milliseconds interval)
+{
+    Node::setRebirthRetryInterval(interval);
 }

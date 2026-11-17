@@ -1,0 +1,7 @@
+/* Linker version script for the shared library: export everything except spdlog and fmt,
+   which are linked in privately. Matches mangled names, including std templates instantiated
+   over spdlog types. */
+{
+  global: *;
+  local: *6spdlog*; *3fmt*;
+};

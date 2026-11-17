@@ -38,35 +38,38 @@
 #include "CommonTypes.h"
 
 /**
- * @brief A class that represents a Sparkplug Property Set
+ * @brief The last known values of a Sparkplug Property Set, keyed by property name
  *
  */
 class PropertySet : public DataCollection<Property>
 {
-private:
-protected:
 public:
+    PropertySet() = default;
+    explicit PropertySet(const std::string &) {}
+
     /**
-     * @brief Appends the Property Set to the Metric
-     *code
+     * @brief Appends the Property Set to a Metric, if any property changed
+     *
      * @param metric
-     * @param force Forces all properties to be appended
+     * @param force Append every property, changed or not
+     * @param consume Mark the properties as clean once appended
      */
-    void appendTo(tahu::Metric *metric, bool force = false);
+    void appendTo(tahu::Metric *metric, bool force = false, bool consume = true);
     /**
-     * @brief Appends all properties in this Property Set to a Property Set
+     * @brief Appends the properties in this Property Set to a tahu Property Set
      *
      * @param propertySet
-     * @param force Forces all properties to be appended
+     * @param force Append every property, changed or not
+     * @param consume Mark the properties as clean once appended
      */
-    void appendTo(tahu::PropertySet *propertySet, bool force = false);
+    void appendTo(tahu::PropertySet *propertySet, bool force = false, bool consume = true);
     /**
-     * @brief Processes a tahu::PropertySet processing all properties
+     * @brief Updates the Property Set from a received tahu Property Set
      *
      * @param propertySet
-     * @return ParseResult
+     * @return ParseResult OUT_OF_SYNC if any property changed datatype
      */
-    ParseResult process(tahu::PropertySet *propertySet);
+    ParseResult process(const tahu::PropertySet *propertySet);
 };
 
 #endif /* SRC_TYPES_PROPERTYSET */

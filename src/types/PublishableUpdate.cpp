@@ -30,8 +30,9 @@
  */
 
 #include "PublishableUpdate.h"
+#include <utility>
 
-PublishableUpdate::PublishableUpdate(tahu::Payload *payload, std::string id, UpdateType type)
-    : payload(payload), id(id), type(type)
+PublishableUpdate::PublishableUpdate(tahu::PayloadPtr payload, std::string id, UpdateType type)
+    : payload(std::move(payload)), id(std::move(id)), type(type)
 {
 }

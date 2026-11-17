@@ -1,0 +1,3 @@
+# TCK assertion ids that are expected to fail, one per line. run_tck.py --known-failures reads this:
+# these do not fail the run, and it says when one passes again so it can be removed.
+# Give each a reason.

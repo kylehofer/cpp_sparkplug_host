@@ -37,85 +37,73 @@
 #include "CommonTypes.h"
 #include <string>
 
-union MetricFlags
-{
-    uint8_t data;
-    struct
-    {
-        uint8_t hasTimestamp : 1;
-        uint8_t isHistorical : 1;
-        uint8_t isTransient : 1;
-        uint8_t isNull : 1;
-        uint8_t hasMetadata : 1;
-        uint8_t hasProperties : 1;
-        uint8_t dirty : 1;
-        uint8_t reserved : 1;
-    };
-};
-
 /**
- * @brief A class that represents a Sparkplug Metric
+ * @brief The last known value of a Sparkplug Metric.
  *
+ * Supports the scalar datatypes, String and Text. DataSet, Bytes, File, UUID and Template
+ * metrics are tracked by name and type but their values are reported as null.
  */
 class Metric
 {
 private:
-    tahu::Metric *source;
-    PropertySet propertySet;
-    size_t length = 0;
-    pb_size_t whichValue;
-    uint32_t type = METRIC_DATA_TYPE_UNKNOWN;
     std::string name;
-    uint64_t timestamp;
-    MetricFlags flags;
+    PropertySet propertySet;
+    uint32_t type = METRIC_DATA_TYPE_UNKNOWN;
+    uint64_t timestamp = 0;
+    bool hasTimestamp = false;
+    bool isHistorical = false;
+    bool isTransient = false;
+    bool isNull = true;
+    bool dirty = false;
+    pb_size_t integerTag = org_eclipse_tahu_protobuf_Payload_Metric_int_value_tag;
 
     union MetricValueUnion
     {
-        uint32_t intValue;
         uint64_t longValue;
         float floatValue;
         double doubleValue;
         bool booleanValue;
-        char *stringValue;
-    } value;
+    } value{};
+
+    std::string stringValue;
 
     /**
-     * @brief Clears the value on the Metric
-     * Frees any allocated memory
+     * @brief Whether the value of this metric can be stored and republished
      */
-    inline void clearValue();
-
-protected:
-    /**
-     * @brief Resets the Metric to a default value
-     * Frees any allocated memory
-     */
-    void clear();
+    bool isSupportedType() const;
 
 public:
-    Metric(std::string &name);
-    ~Metric();
+    explicit Metric(const std::string &name);
+    Metric(const Metric &) = delete;
+    Metric &operator=(const Metric &) = delete;
+
     /**
      * @brief Appends this Metric to a Payload if it has had changes
      *
      * @param payload
-     * @param force Forces the Metric to be appended
+     * @param force Append the metric even if it has not changed
+     * @param consume Mark the metric as clean once appended
      */
-    void appendTo(tahu::Payload *payload, bool force = false);
+    void appendTo(tahu::Payload *payload, bool force = false, bool consume = true);
     /**
-     * @brief Processes a tahu::Metric and updates the Metric
+     * @brief Updates the Metric from a received tahu::Metric.
+     * The datatype may be omitted on data messages, in which case the type from the birth is used.
      *
      * @param metric
-     * @return ParseResult
+     * @return ParseResult OUT_OF_SYNC if the datatype is unknown or differs from the birth
      */
-    ParseResult process(tahu::Metric *metric);
+    ParseResult process(const tahu::Metric *metric);
     /**
-     * @brief Whether the metric has data that hasn't been acknowledged
+     * @brief Whether the metric has changed since it was last appended
      *
      * @return true
      * @return false
      */
-    bool isDirty();
+    bool isDirty() const;
+    /**
+     * @brief The Sparkplug datatype of the metric (METRIC_DATA_TYPE_*)
+     */
+    uint32_t getType() const;
 };
 
 #endif /* SRC_TYPES_METRIC */

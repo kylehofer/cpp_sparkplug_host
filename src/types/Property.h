@@ -34,21 +34,24 @@
 
 #include "TahuTypes.h"
 #include "CommonTypes.h"
+#include <memory>
 #include <string>
 
 class PropertySet;
 
 /**
- * @brief A class that represents a Sparkplug Property
+ * @brief The last known value of a single Sparkplug metric property.
  *
+ * Supports the scalar property types, strings and nested property sets.
+ * Property set lists are not supported and are reported as null.
  */
 class Property
 {
 private:
-    size_t length;
-    uint32_t type = PROPERTY_DATA_TYPE_UNKNOWN;
-    bool dirty;
     std::string name;
+    uint32_t type = PROPERTY_DATA_TYPE_UNKNOWN;
+    bool dirty = false;
+    bool isNull = true;
 
     union PropertyValueUnion
     {
@@ -57,22 +60,19 @@ private:
         float floatValue;
         double doubleValue;
         bool booleanValue;
-        char *stringValue;
-        PropertySet *propertySetValue;
-    } value;
+    } value{};
 
-    /**
-     * @brief Clears the value on the Property
-     * Frees any allocated memory
-     */
-    inline void clearValue();
+    std::string stringValue;
+    std::unique_ptr<PropertySet> propertySetValue;
 
-protected:
 public:
-    Property(std::string &name);
+    explicit Property(const std::string &name);
     ~Property();
+    Property(const Property &) = delete;
+    Property &operator=(const Property &) = delete;
+
     /**
-     * @brief Clears the data associated with this Property
+     * @brief Resets the property to an unknown, null value
      *
      */
     void clear();
@@ -80,23 +80,24 @@ public:
      * @brief Appends this property to a Property Set if it has had changes
      *
      * @param propertySet
-     * @param force Forces the Property to be appended
+     * @param force Append the property even if it has not changed
+     * @param consume Mark the property as clean once appended
      */
-    void appendTo(tahu::PropertySet *propertySet, bool force = false);
+    void appendTo(tahu::PropertySet *propertySet, bool force = false, bool consume = true);
     /**
-     * @brief Processes a tahu Property and updates the Property
+     * @brief Updates the Property from a received tahu Property
      *
      * @param property
-     * @return ParseResult
+     * @return ParseResult OUT_OF_SYNC if the datatype changed since the birth
      */
-    ParseResult process(tahu::Property *property);
+    ParseResult process(const tahu::Property *property);
     /**
-     * @brief Whether the property has data that hasn't been acknowledged
+     * @brief Whether the property has changed since it was last appended
      *
      * @return true
      * @return false
      */
-    bool isDirty();
+    bool isDirty() const;
 };
 
 #endif /* SRC_TYPES_PROPERTY */

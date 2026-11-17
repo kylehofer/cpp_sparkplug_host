@@ -34,6 +34,10 @@
 
 #include <string>
 
+/**
+ * @brief The message type part of a Sparkplug topic.
+ *
+ */
 enum class SparkplugCommandType
 {
     NBIRTH,
@@ -47,33 +51,45 @@ enum class SparkplugCommandType
     INVALID
 };
 
+/**
+ * @brief Parses a Sparkplug B topic of the form
+ * spBv1.0/<group_id>/<message_type>/<edge_node_id>[/<device_id>]
+ *
+ * STATE topics are not handled here and fail to parse.
+ */
 class SparkplugTopic
 {
 private:
     std::string group;
     std::string node;
-    SparkplugCommandType command;
     std::string device;
-    bool hasDevice;
+    SparkplugCommandType command = SparkplugCommandType::INVALID;
+    bool hasDevice = false;
 
-    inline size_t nextSplitter(std::string &input, size_t start);
-    inline size_t readPart(std::string &input, size_t start, std::string &output);
-
-    inline SparkplugCommandType parseCommand(std::string &input);
-
-protected:
 public:
-    bool parse(std::string &input);
-    SparkplugCommandType getCommandType();
-    bool isBirth();
-    bool isDeath();
-    bool isData();
-    bool isCommand();
-    bool isTarget(std::string target);
-    bool isDevice();
-    std::string &getGroup();
-    std::string &getNode();
-    std::string &getDevice();
+    /**
+     * @brief Parses a topic, replacing any previously parsed values.
+     *
+     * @param input The full MQTT topic
+     * @return true The topic is a valid Sparkplug node or device topic
+     * @return false The topic is not a Sparkplug node or device topic
+     */
+    bool parse(const std::string &input);
+    SparkplugCommandType getCommandType() const;
+    /** @brief NBIRTH or DBIRTH */
+    bool isBirth() const;
+    /** @brief NDEATH or DDEATH */
+    bool isDeath() const;
+    /** @brief NDATA or DDATA */
+    bool isData() const;
+    /** @brief NCMD or DCMD */
+    bool isCommand() const;
+    /** @brief Whether the topic contains a device id */
+    bool isDevice() const;
+    const std::string &getGroup() const;
+    const std::string &getNode() const;
+    /** @brief The device id, or an empty string for node topics */
+    const std::string &getDevice() const;
 };
 
 #endif /* SRC_UTILITIES_SPARKPLUGTOPIC */

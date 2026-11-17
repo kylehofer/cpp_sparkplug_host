@@ -30,7 +30,8 @@
  */
 
 #include "Device.h"
-inline bool Device::isDevice()
+
+bool Device::isDevice() const
 {
     return true;
 }

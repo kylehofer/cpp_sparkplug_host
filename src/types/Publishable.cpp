@@ -30,170 +30,175 @@
  */
 
 #include "Publishable.h"
-#include "pb_decode.h"
+#include "../utilities/LogMacros.h"
 
-#define DEBUGGING 1
-#ifdef DEBUGGING
-#define LOGGER(format, ...)  \
-    printf("Publishable: "); \
-    printf(format, ##__VA_ARGS__)
-#else
-#define LOGGER(out, ...)
-#endif
-
-using namespace std;
-
-ParseResult Publishable::process(SparkplugTopic &topic, tahu::Payload *payload)
+namespace
 {
-    if (topic.isDeath() && state == PublishableState::ACTIVE)
+    const char *const COMPONENT = "Publishable";
+}
+
+Publishable::Publishable(const std::string &name) : name(name)
+{
+}
+
+Publishable::~Publishable() = default;
+
+ParseResult Publishable::process(const SparkplugTopic &topic, const tahu::Payload *payload)
+{
+    if (topic.isBirth())
     {
-        stale();
-        changedState = ChangedState::CHANGES;
+        clear();
+        aliases.clear();
+        state = PublishableState::ONLINE;
+        birthPending = true;
+        deathPending = false;
+        if (payload->has_timestamp)
+        {
+            lastTimestamp = payload->timestamp;
+        }
+        return loadPayload(payload, true);
+    }
+
+    if (topic.isDeath())
+    {
+        markOffline();
         return ParseResult::OK;
     }
 
     if (topic.isData())
     {
-        if (state == PublishableState::STALE)
+        if (state != PublishableState::ONLINE)
         {
-
-            if (isDevice())
-            {
-                LOGGER("Received a Data message while stale for %s/%s/%s.\n",
-                       topic.getGroup().c_str(),
-                       topic.getNode().c_str(),
-                       topic.getDevice().c_str());
-            }
-            else
-            {
-                LOGGER("Received a Data message while stale for %s/%s.\n",
-                       topic.getGroup().c_str(),
-                       topic.getNode().c_str());
-            }
-
-            if (actionState == ActionState::NOTHING)
-            {
-                actionState = ActionState::REBIRTH;
-                return ParseResult::OUT_OF_SYNC;
-            }
-            else
-            {
-                return ParseResult::OK;
-            }
+            SPH_LOG_INFO(COMPONENT, "Received data for {} while it is offline", name);
+            return ParseResult::OUT_OF_SYNC;
         }
-        lastValidMessage = payload->timestamp;
-        loadPayload(payload);
-        return ParseResult::OK;
-    }
-
-    if (topic.isBirth())
-    {
-        actionState = ActionState::NOTHING;
-        changedState = ChangedState::CHANGES;
-        birthed();
-        lastValidMessage = payload->timestamp;
-        loadPayload(payload, true);
-        return ParseResult::OK;
-    }
-
-    if (topic.isCommand())
-    {
-        return ParseResult::OK;
+        if (payload->has_timestamp)
+        {
+            lastTimestamp = payload->timestamp;
+        }
+        return loadPayload(payload, false);
     }
 
     return ParseResult::OK;
 }
 
-bool Publishable::hasMetric(tahu::Metric &input)
+void Publishable::markOffline()
 {
-    return false;
+    if (state == PublishableState::ONLINE)
+    {
+        state = PublishableState::OFFLINE;
+        deathPending = true;
+        birthPending = false;
+    }
 }
 
-void Publishable::stale()
+bool Publishable::isOnline() const
 {
-    state = PublishableState::STALE;
+    return state == PublishableState::ONLINE;
 }
 
-void Publishable::birthed()
+const std::string &Publishable::getName() const
 {
-    state = PublishableState::BIRTHED;
-}
-
-void Publishable::active()
-{
-    state = PublishableState::ACTIVE;
-}
-
-Publishable::Publishable(std::string name) : name(name)
-{
-}
-
-Publishable::~Publishable()
-{
+    return name;
 }
 
 void Publishable::appendTo(std::vector<PublishableUpdate> &payloads, bool force)
 {
-    if ((changedState == ChangedState::CHANGES || force) && state == PublishableState::STALE)
+    if (state != PublishableState::ONLINE)
+    {
+        if (deathPending || force)
+        {
+            payloads.emplace_back(nullptr, name, UpdateType::DEATH);
+            if (!force)
+            {
+                deathPending = false;
+            }
+        }
+        return;
+    }
+
+    bool isBirth = birthPending || force;
+
+    if (!isBirth && !any([](Metric *metric)
+                         { return metric->isDirty(); }))
+    {
+        return;
+    }
+
+    tahu::PayloadPtr payload = tahu::makePayload();
+    payload->has_seq = false;
+    payload->has_timestamp = true;
+    payload->timestamp = lastTimestamp;
+
+    // A forced snapshot must not consume changes the incremental stream has not reported yet
+    bool consume = !force;
+    each([&payload, isBirth, consume](Metric *metric)
+         { metric->appendTo(payload.get(), isBirth, consume); });
+
+    if (isBirth)
     {
         if (!force)
         {
-            changedState = ChangedState::NOTHING;
+            birthPending = false;
         }
-        payloads.push_back(PublishableUpdate(nullptr, name, UpdateType::DEATH));
-        return;
-    }
-
-    changedState = ChangedState::NOTHING;
-
-    bool hasChanges = force || any([](Metric *metric)
-                                   { return metric->isDirty(); });
-
-    if (!hasChanges)
-    {
-        return;
-    }
-
-    tahu::Payload *payload = (org_eclipse_tahu_protobuf_Payload *)malloc(sizeof(org_eclipse_tahu_protobuf_Payload));
-
-    // Initialize payload
-    memset(payload, 0, sizeof(org_eclipse_tahu_protobuf_Payload));
-
-    payload->has_seq = false;
-    payload->has_timestamp = true;
-    payload->timestamp = lastValidMessage;
-
-    each([payload, force](Metric *metric)
-         { metric->appendTo(payload, force); });
-
-    if (state == PublishableState::BIRTHED || force)
-    {
-        if (state == PublishableState::BIRTHED)
-        {
-            active();
-        }
-        payloads.push_back(PublishableUpdate(payload, name, UpdateType::BIRTH));
+        payloads.emplace_back(std::move(payload), name, UpdateType::BIRTH);
     }
     else
     {
-        payloads.push_back(PublishableUpdate(payload, name, UpdateType::PUBLISH));
+        payloads.emplace_back(std::move(payload), name, UpdateType::PUBLISH);
     }
 }
 
-ParseResult Publishable::loadPayload(tahu::Payload *payload, bool isBirth)
+ParseResult Publishable::loadPayload(const tahu::Payload *payload, bool isBirth)
 {
-    if (isBirth)
-    {
-        clear();
-    }
+    ParseResult result = ParseResult::OK;
 
     for (size_t i = 0; i < payload->metrics_count; i++)
     {
-        tahu::Metric *metric = &payload->metrics[i];
-        if (get(metric->name)->process(metric) == ParseResult::OUT_OF_SYNC)
+        const tahu::Metric *source = &payload->metrics[i];
+        std::string metricName;
+
+        if (source->name && source->name[0] != '\0')
         {
-            return ParseResult::OUT_OF_SYNC;
-        };
+            metricName = source->name;
+            if (isBirth && source->has_alias)
+            {
+                aliases[source->alias] = metricName;
+            }
+        }
+        else if (source->has_alias && !isBirth)
+        {
+            auto alias = aliases.find(source->alias);
+            if (alias == aliases.end())
+            {
+                SPH_LOG_WARNING(COMPONENT, "Unknown alias {} on {}",
+                                source->alias, name);
+                result = ParseResult::OUT_OF_SYNC;
+                continue;
+            }
+            metricName = alias->second;
+        }
+        else
+        {
+            SPH_LOG_WARNING(COMPONENT, "Metric without a name or alias on {}", name);
+            result = ParseResult::OUT_OF_SYNC;
+            continue;
+        }
+
+        Metric *metric = isBirth ? get(metricName) : find(metricName);
+        if (!metric)
+        {
+            SPH_LOG_WARNING(COMPONENT, "Metric {} on {} was not in its birth", metricName, name);
+            result = ParseResult::OUT_OF_SYNC;
+            continue;
+        }
+
+        if (metric->process(source) == ParseResult::OUT_OF_SYNC)
+        {
+            SPH_LOG_WARNING(COMPONENT, "Metric {} on {} has an unexpected datatype", metricName, name);
+            result = ParseResult::OUT_OF_SYNC;
+        }
     }
-    return ParseResult::OK;
+
+    return result;
 }

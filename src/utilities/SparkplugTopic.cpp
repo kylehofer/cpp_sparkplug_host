@@ -30,176 +30,148 @@
  */
 
 #include "SparkplugTopic.h"
+#include <vector>
 
-using namespace std;
-
-const string DELIMITER{"/"};
-const string SPARKPLUG_ID{"spBv1.0"};
-
-const string NBIRTH{"NBIRTH"};
-const string NDEATH{"NDEATH"};
-const string NDATA{"NDATA"};
-const string NCMD{"NCMD"};
-const string DBIRTH{"DBIRTH"};
-const string DDEATH{"DDEATH"};
-const string DDATA{"DDATA"};
-const string DCMD{"DCMD"};
-
-inline size_t SparkplugTopic::nextSplitter(string &input, size_t start)
+namespace
 {
-    auto index = input.find(DELIMITER, start);
-    if (index == string::npos)
+    const char *const SPARKPLUG_ID = "spBv1.0";
+
+    SparkplugCommandType parseCommand(const std::string &input)
     {
-        return string::npos;
+        if (input == "NBIRTH")
+            return SparkplugCommandType::NBIRTH;
+        if (input == "NDEATH")
+            return SparkplugCommandType::NDEATH;
+        if (input == "NDATA")
+            return SparkplugCommandType::NDATA;
+        if (input == "NCMD")
+            return SparkplugCommandType::NCMD;
+        if (input == "DBIRTH")
+            return SparkplugCommandType::DBIRTH;
+        if (input == "DDEATH")
+            return SparkplugCommandType::DDEATH;
+        if (input == "DDATA")
+            return SparkplugCommandType::DDATA;
+        if (input == "DCMD")
+            return SparkplugCommandType::DCMD;
+        return SparkplugCommandType::INVALID;
     }
 
-    if (index >= input.length() - 1)
+    std::vector<std::string> split(const std::string &input)
     {
-        return string::npos;
+        std::vector<std::string> parts;
+        size_t start = 0;
+        while (true)
+        {
+            size_t index = input.find('/', start);
+            if (index == std::string::npos)
+            {
+                parts.push_back(input.substr(start));
+                return parts;
+            }
+            parts.push_back(input.substr(start, index - start));
+            start = index + 1;
+        }
     }
 
-    return index;
+    bool isDeviceCommand(SparkplugCommandType command)
+    {
+        return command == SparkplugCommandType::DBIRTH ||
+               command == SparkplugCommandType::DDEATH ||
+               command == SparkplugCommandType::DDATA ||
+               command == SparkplugCommandType::DCMD;
+    }
 }
 
-inline size_t SparkplugTopic::readPart(string &input, size_t start, string &output)
+bool SparkplugTopic::parse(const std::string &input)
 {
-    auto index = nextSplitter(input, start);
-    if (index == string::npos)
-    {
-        output = input.substr(start);
-        return string::npos;
-    }
-    output = input.substr(start, index - start);
+    group.clear();
+    node.clear();
+    device.clear();
+    hasDevice = false;
+    command = SparkplugCommandType::INVALID;
 
-    return index + 1;
-}
+    auto parts = split(input);
 
-bool SparkplugTopic::parse(std::string &input)
-{
-    size_t index = 0;
-    string temp;
-
-    index = readPart(input, index, temp);
-
-    if (index == string::npos || temp.compare(SPARKPLUG_ID) != 0)
+    if (parts.size() < 4 || parts.size() > 5 || parts[0] != SPARKPLUG_ID)
     {
         return false;
     }
 
-    index = readPart(input, index, group);
+    for (const auto &part : parts)
+    {
+        if (part.empty())
+        {
+            return false;
+        }
+    }
 
-    if (index == string::npos)
+    SparkplugCommandType parsed = parseCommand(parts[2]);
+    if (parsed == SparkplugCommandType::INVALID)
     {
         return false;
     }
 
-    index = readPart(input, index, temp);
-    command = parseCommand(temp);
-
-    if (index == string::npos || command == SparkplugCommandType::INVALID)
+    // Device message types must carry a device id, node message types must not.
+    bool withDevice = parts.size() == 5;
+    if (withDevice != isDeviceCommand(parsed))
     {
         return false;
     }
 
-    index = readPart(input, index, node);
-
-    if (index == string::npos)
+    command = parsed;
+    group = parts[1];
+    node = parts[3];
+    if (withDevice)
     {
-        hasDevice = false;
-        return true;
+        device = parts[4];
+        hasDevice = true;
     }
-
-    device = input.substr(index);
-    hasDevice = true;
 
     return true;
 }
 
-SparkplugCommandType SparkplugTopic::getCommandType()
+SparkplugCommandType SparkplugTopic::getCommandType() const
 {
     return command;
 }
 
-bool SparkplugTopic::isBirth()
+bool SparkplugTopic::isBirth() const
 {
-    return (command == SparkplugCommandType::DBIRTH || command == SparkplugCommandType::NBIRTH);
+    return command == SparkplugCommandType::DBIRTH || command == SparkplugCommandType::NBIRTH;
 }
 
-bool SparkplugTopic::isDeath()
+bool SparkplugTopic::isDeath() const
 {
-    return (command == SparkplugCommandType::DDEATH || command == SparkplugCommandType::NDEATH);
+    return command == SparkplugCommandType::DDEATH || command == SparkplugCommandType::NDEATH;
 }
 
-bool SparkplugTopic::isData()
+bool SparkplugTopic::isData() const
 {
-    return (command == SparkplugCommandType::DDATA || command == SparkplugCommandType::NDATA);
+    return command == SparkplugCommandType::DDATA || command == SparkplugCommandType::NDATA;
 }
 
-bool SparkplugTopic::isCommand()
+bool SparkplugTopic::isCommand() const
 {
-    return (command == SparkplugCommandType::DCMD || command == SparkplugCommandType::NCMD);
+    return command == SparkplugCommandType::DCMD || command == SparkplugCommandType::NCMD;
 }
 
-bool SparkplugTopic::isTarget(std::string target)
-{
-    return target.compare(hasDevice ? device : node) == 0;
-}
-
-bool SparkplugTopic::isDevice()
+bool SparkplugTopic::isDevice() const
 {
     return hasDevice;
 }
 
-std::string &SparkplugTopic::getGroup()
+const std::string &SparkplugTopic::getGroup() const
 {
     return group;
 }
 
-std::string &SparkplugTopic::getNode()
+const std::string &SparkplugTopic::getNode() const
 {
     return node;
 }
 
-std::string &SparkplugTopic::getDevice()
+const std::string &SparkplugTopic::getDevice() const
 {
-
     return device;
-}
-
-inline SparkplugCommandType SparkplugTopic::parseCommand(std::string &input)
-{
-    if (DDATA.compare(input) == 0)
-    {
-        return SparkplugCommandType::DDATA;
-    }
-    if (NDATA.compare(input) == 0)
-    {
-        return SparkplugCommandType::NDATA;
-    }
-    if (DBIRTH.compare(input) == 0)
-    {
-        return SparkplugCommandType::DBIRTH;
-    }
-    if (NBIRTH.compare(input) == 0)
-    {
-        return SparkplugCommandType::NBIRTH;
-    }
-    if (DDEATH.compare(input) == 0)
-    {
-        return SparkplugCommandType::DDEATH;
-    }
-    if (NDEATH.compare(input) == 0)
-    {
-        return SparkplugCommandType::NDEATH;
-    }
-    if (DCMD.compare(input) == 0)
-    {
-        return SparkplugCommandType::DCMD;
-    }
-    if (NCMD.compare(input) == 0)
-    {
-        return SparkplugCommandType::NCMD;
-    }
-
-    return SparkplugCommandType::INVALID;
 }

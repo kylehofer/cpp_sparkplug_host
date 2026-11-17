@@ -33,144 +33,130 @@
 #define SRC_SPARKPLUGRECEIVER
 
 #include "mqtt/async_client.h"
-#include "types/TahuTypes.h"
-#include "utilities/SparkplugTopic.h"
 #include "mqtt/iaction_listener.h"
-
-using namespace std;
-
-/**
- * @brief Struct for holding the data from a Sparkplug Payload along with the topic is published on
- *
- */
-struct SparkplugMessage
-{
-public:
-    SparkplugMessage() {};
-    SparkplugMessage(string topic, tahu::Payload *payload) : topic(topic), payload(payload) {};
-    string topic;
-    tahu::Payload *payload;
-};
+#include "SparkplugMessage.h"
+#include "types/TahuTypes.h"
+#include <chrono>
+#include <string>
 
 /**
- * @brief A Mqtt Client for both sending and receiving sparkplug payloads
+ * @brief The MQTT connection used by SparkplugHost. Internal: not part of the public API.
  *
+ * Subscribes to spBv1.0/#, decodes incoming payloads, publishes commands and rebirth requests,
+ * and, when a host id is set, maintains the Primary Host STATE topic (birth, Will and
+ * re-assertion when another client marks the host offline).
+ *
+ * Publishing methods never throw. They return false and log when the client is disconnected
+ * or the broker rejects the message.
  */
-class SparkplugReceiver : mqtt::iaction_listener
+class SparkplugReceiver : private mqtt::iaction_listener
 {
 private:
-    mqtt::will_options will;
-    mqtt::connect_options connectionOptions;
+    /**
+     * @brief Logs the result of the asynchronous connect
+     */
+    class ConnectListener : public mqtt::iaction_listener
+    {
+    public:
+        void on_failure(const mqtt::token &token) override;
+        void on_success(const mqtt::token &token) override;
+    };
+
     std::string address;
     std::string clientId;
-    mqtt::async_client client;
     std::string hostId;
     std::string username;
     std::string password;
-    bool useSsl;
     std::string hostIdTopic;
     std::string hostIdOffline;
     std::string hostIdOnline;
     uint64_t connectTime = 0;
     mqtt::ssl_options sslOptions;
-    const mqtt::subscribe_options SUBSCRIBE_OPTIONS = mqtt::subscribe_options(
-        mqtt::subscribe_options::NO_LOCAL,
-        false,
-        mqtt::subscribe_options::DONT_SEND_RETAINED);
+    mqtt::connect_options connectionOptions;
+    mqtt::async_client client;
+    ConnectListener connectListener;
 
-    mqtt::async_client configureClient();
+    bool publish(const std::string &topic, const std::string &payload, int qos, bool retained, bool wait = false);
+    bool publishPayload(const std::string &topic, const tahu::Payload *payload);
+    void handleState(const std::string &json);
 
-protected:
+    /** Called when the subscription fails */
+    void on_failure(const mqtt::token &token) override;
+    /** Called when the subscription succeeds. Publishes the online STATE. */
+    void on_success(const mqtt::token &token) override;
+
 public:
     /**
      * @brief Construct a new Sparkplug Receiver
      *
-     * @param address The address of the mqtt server to listen to
-     */
-    SparkplugReceiver(string address);
-    /**
-     * @brief Construct a new Sparkplug Receiver
-     *
-     * @param address The address of the mqtt server to listen to
+     * @param address The address of the mqtt server, e.g. tcp://localhost:1883 or ssl://broker:8883
      * @param clientId MQTT Client Id
+     * @param hostId The Sparkplug Primary Host Id. Leave empty to run without a STATE topic.
      */
-    SparkplugReceiver(string address, string clientId);
-
-    /**
-     * @brief Construct a new Sparkplug Receiver as a Primary Host
-     *
-     * @param address The address of the mqtt server to listen to
-     * @param clientId MQTT Client Id
-     * @param hostId The Sparkplug Primary Host Id
-     */
-    SparkplugReceiver(string address, string clientId, string hostId);
+    SparkplugReceiver(const std::string &address, const std::string &clientId, const std::string &hostId = "");
 
     ~SparkplugReceiver();
 
     /**
-     * @brief Activates the receiver to start receiving messages
+     * @brief Sets the credentials used by configure(). Empty values are not sent.
      *
-     * @return int
+     * @param username
+     * @param password
      */
-    int activate();
+    void credentials(const std::string &username, const std::string &password);
 
     /**
-     * @brief Configures the MQTT client and event callbacks
+     * @brief Builds the connection options and registers the connection callbacks
      *
-     * @return int
+     * @return int 0
      */
     int configure();
 
     /**
-     * @brief Attempts to consume a Sparkplug payload from the MQTT Client.
+     * @brief Starts connecting to the broker. Returns immediately; connection failures are logged
+     * and retried automatically.
      *
-     * @param message A reference to a message which will be filled with data
-     * @return true If a message was consumed
-     * @return false No message was consumed
+     * @return int 0 if the connect was started, -1 if it was rejected
      */
-    bool consume(SparkplugMessage &message);
+    int activate();
 
     /**
-     * @brief Publishes a Sparkplug payload with a Node Rebirth Metric
+     * @brief Takes the next Sparkplug message from the receive queue.
+     * STATE messages for this host are handled internally and skipped, as are payloads that fail to decode.
      *
-     * @param topic The topic to post the Rebirth Metric to
-     * @return int
+     * @param message Filled with the topic and decoded payload
+     * @param wait How long to wait for a message if none is queued
+     * @return true A message was returned
+     * @return false No message arrived in time
      */
-    int rebirth(const std::string &topic);
-    /**
-     * @brief Publishes a metric to a topic
-     *
-     * @param metric The metric to publish
-     * @param topic The topic to publish the metric on
-     * @return int
-     */
-    int command(tahu::Metric &metric, string topic);
-    /**
-     * @brief Publishes a metric to a topic
-     *
-     * @param metric The metric and topic to publish
-     * @return int
-     */
-    int command(SparkplugMessage &message);
+    bool consume(SparkplugMessage &message, std::chrono::milliseconds wait = std::chrono::milliseconds(0));
 
     /**
-     * This method is invoked when an action fails.
-     * @param asyncActionToken
+     * @brief Publishes a Node Control/Rebirth request
+     *
+     * @param topic The node's NCMD topic: spBv1.0/<group>/NCMD/<node>
+     * @return true The request was published
      */
-    virtual void on_failure(const mqtt::token &asyncActionToken) override;
-    /**
-     * This method is invoked when an action has completed successfully.
-     * @param asyncActionToken
-     */
-    virtual void on_success(const mqtt::token &asyncActionToken) override;
+    bool rebirth(const std::string &topic);
 
     /**
-     * @brief Stops the receiver, disconnecting from the broker
+     * @brief Publishes a command payload. Sets the payload timestamp and clears its sequence number.
+     *
+     * @param message
+     * @return true The command was published
+     */
+    bool command(SparkplugMessage &message);
+
+    /**
+     * @brief Whether the client is currently connected
+     */
+    bool isConnected() const;
+
+    /**
+     * @brief Publishes the offline STATE (when a host id is set) and disconnects. Does not throw.
      *
      */
     void stop();
-
-    void credentials(std::string username, std::string password);
 };
 
 #endif /* SRC_SPARKPLUGRECEIVER */
